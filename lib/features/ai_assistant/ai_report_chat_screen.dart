@@ -136,7 +136,7 @@ class _AiReportChatScreenState extends ConsumerState<AiReportChatScreen> {
                     Icons.key_off_rounded,
                     color: AppTheme.warningColor,
                   ),
-                  title: const Text('Gemini API Key belum diatur'),
+                  title: const Text('Pengaturan AI belum dikonfigurasi'),
                   trailing: TextButton(
                     onPressed: () => context.push('/ai-settings'),
                     child: const Text('Atur'),

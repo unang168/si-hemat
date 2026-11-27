@@ -121,11 +121,11 @@ class _AiChatInputScreenState extends ConsumerState<AiChatInputScreen> {
                   color: AppTheme.warningColor,
                 ),
                 title: const Text(
-                  'Gemini API Key belum diatur',
+                  'Pengaturan AI belum dikonfigurasi',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 subtitle: const Text(
-                  'Atur API Key gratis dari Google AI Studio untuk mengaktifkan fitur ini.',
+                  'Atur API Key Gemini gratis atau server 9Router Anda untuk mengaktifkan fitur ini.',
                 ),
                 trailing: TextButton(
                   onPressed: () => context.push('/ai-settings'),

@@ -70,16 +70,44 @@ class AiParseResult {
   final List<AiTransactionDraft> drafts;
 }
 
+class AiProviderType {
+  AiProviderType._();
+
+  static const String gemini = 'gemini';
+  static const String nineRouter = 'nine_router';
+}
+
 class AiConfig {
   const AiConfig({
+    this.provider = AiProviderType.gemini,
     required this.apiKey,
     required this.model,
+    this.nineRouterBaseUrl = 'http://192.168.1.10:20128/v1',
+    this.nineRouterApiKey = '',
+    this.nineRouterModel = '',
   });
 
-  final String apiKey;
-  final String model;
+  final String provider; // gemini | nine_router
+  final String apiKey; // Gemini API key
+  final String model; // Gemini model
+  final String nineRouterBaseUrl;
+  final String nineRouterApiKey;
+  final String nineRouterModel;
 
-  bool get isConfigured => apiKey.trim().isNotEmpty;
+  bool get isNineRouter => provider == AiProviderType.nineRouter;
+
+  bool get isConfigured {
+    if (isNineRouter) {
+      return nineRouterBaseUrl.trim().isNotEmpty &&
+          nineRouterModel.trim().isNotEmpty;
+    }
+    return apiKey.trim().isNotEmpty;
+  }
+
+  String get activeProviderLabel => isNineRouter ? '9Router' : 'Gemini';
+
+  String get activeModelLabel =>
+      isNineRouter ? nineRouterModel.trim() : model.trim();
 }
 
 /// Deterministic matchers that map Gemini's suggested category/wallet labels

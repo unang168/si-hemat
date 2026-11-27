@@ -99,6 +99,7 @@ class _AppRootGate extends ConsumerStatefulWidget {
 class _AppRootGateState extends ConsumerState<_AppRootGate>
     with WidgetsBindingObserver {
   DateTime? _backgroundedAt;
+  String? _syncedNotifFamilyId;
 
   @override
   void initState() {
@@ -157,6 +158,15 @@ class _AppRootGateState extends ConsumerState<_AppRootGate>
       data: (family) {
         if (family == null) {
           return const OnboardingScreen();
+        }
+        if (_syncedNotifFamilyId != family.id) {
+          _syncedNotifFamilyId = family.id;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            ref
+                .read(billNotificationServiceProvider)
+                .rescheduleAllForFamily(family.id);
+          });
         }
         if (lockStatusAsync.isLoading && !isUnlocked) {
           return const Scaffold(

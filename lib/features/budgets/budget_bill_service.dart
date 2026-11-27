@@ -2,6 +2,7 @@ import 'package:si_hemat/core/constants/sync_constants.dart';
 import 'package:si_hemat/core/database/app_database.dart';
 import 'package:si_hemat/core/security/secure_storage_service.dart';
 import 'package:si_hemat/core/utils/date_formatter.dart';
+import 'package:si_hemat/features/budgets/bill_notification_service.dart';
 import 'package:si_hemat/features/onboarding/onboarding_service.dart';
 import 'package:uuid/uuid.dart';
 
@@ -10,12 +11,22 @@ class BudgetBillService {
     required this.db,
     required this.keyStore,
     required this.onboarding,
+    this.notifications,
   });
 
   final AppDatabase db;
   final SecureKeyStore keyStore;
   final OnboardingService onboarding;
+  final BillNotificationService? notifications;
   static const Uuid _uuid = Uuid();
+
+  Future<void> _syncBillNotifications([String? familyId]) async {
+    final notifier = notifications;
+    if (notifier == null) return;
+    final resolvedFamilyId = familyId ?? (await db.getActiveFamily())?.id;
+    if (resolvedFamilyId == null) return;
+    await notifier.rescheduleAllForFamily(resolvedFamilyId);
+  }
 
   Future<String> _resolveMemberId(String familyId) async {
     final stored = await keyStore.read(SecureStorageKeys.memberId);
@@ -99,7 +110,7 @@ class BudgetBillService {
       endKey = DateFormatter.monthKey(endDate);
     }
 
-    return db.insertRecurringBill(
+    final id = await db.insertRecurringBill(
       id: _uuid.v4(),
       familyId: familyId,
       walletId: walletId,
@@ -112,6 +123,8 @@ class BudgetBillService {
       visibility: visibility,
       deviceId: deviceId,
     );
+    await _syncBillNotifications(familyId);
+    return id;
   }
 
   Future<void> updateBill({
@@ -155,6 +168,7 @@ class BudgetBillService {
       visibility: visibility,
       deviceId: deviceId,
     );
+    await _syncBillNotifications();
   }
 
   /// Stops the bill starting from [fromMonth] onward while preserving earlier paid months.
@@ -168,12 +182,14 @@ class BudgetBillService {
       fromMonth: fromMonth,
       deviceId: deviceId,
     );
+    await _syncBillNotifications();
   }
 
   /// Soft-deletes the entire recurring bill schedule (already-recorded transactions stay intact).
   Future<void> deleteBill(String billId) async {
     final deviceId = await onboarding.getOrCreateDeviceId();
     await db.softDeleteRecurringBill(id: billId, deviceId: deviceId);
+    await _syncBillNotifications();
   }
 
   DateTime? _parseMonthKey(String? key) {
@@ -217,7 +233,7 @@ class BudgetBillService {
       );
     }
 
-    return db.payRecurringBillAtomically(
+    final txId = await db.payRecurringBillAtomically(
       bill: bill,
       transactionId: _uuid.v4(),
       memberId: memberId,
@@ -228,5 +244,7 @@ class BudgetBillService {
       deviceId: deviceId,
       overrideAmount: overrideAmount,
     );
+    await _syncBillNotifications(bill.familyId);
+    return txId;
   }
 }

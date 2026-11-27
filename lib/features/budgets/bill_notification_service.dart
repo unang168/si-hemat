@@ -1,0 +1,408 @@
+import 'dart:convert';
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:si_hemat/core/database/app_database.dart';
+import 'package:si_hemat/core/security/secure_storage_service.dart';
+import 'package:si_hemat/core/utils/currency_formatter.dart';
+import 'package:si_hemat/core/utils/date_formatter.dart';
+import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
+
+enum BillReminderKind {
+  twoDaysBefore, // H-2
+  dueToday, // Hari-H
+}
+
+class PlannedBillReminder {
+  const PlannedBillReminder({
+    required this.notificationId,
+    required this.billId,
+    required this.billName,
+    required this.monthKey,
+    required this.kind,
+    required this.scheduledAt,
+    required this.dueDate,
+    required this.title,
+    required this.body,
+  });
+
+  final int notificationId;
+  final String billId;
+  final String billName;
+  final String monthKey;
+  final BillReminderKind kind;
+  final DateTime scheduledAt;
+  final DateTime dueDate;
+  final String title;
+  final String body;
+}
+
+class BillNotificationSettings {
+  const BillNotificationSettings({
+    required this.enabled,
+    required this.hour,
+  });
+
+  final bool enabled;
+  final int hour;
+}
+
+/// Pure, deterministic scheduler logic for H-2 and Hari-H recurring bill reminders.
+class BillNotificationPlanner {
+  BillNotificationPlanner._();
+
+  /// Computes all upcoming H-2 (2 days before due date) and Hari-H (due date)
+  /// reminders across the current month and next month for active, unpaid bills.
+  static List<PlannedBillReminder> planReminders({
+    required List<RecurringBill> bills,
+    required DateTime now,
+    int reminderHour = 8,
+    int reminderMinute = 0,
+  }) {
+    final planned = <PlannedBillReminder>[];
+    final clampedHour = reminderHour.clamp(0, 23);
+    final clampedMin = reminderMinute.clamp(0, 59);
+    final targetMonths = [
+      DateTime(now.year, now.month, 1),
+      DateTime(now.year, now.month + 1, 1),
+    ];
+
+    for (final bill in bills) {
+      if (bill.isDeleted || !bill.isActive) continue;
+      final paidSet = AppDatabase.parsePaidMonths(bill);
+
+      for (final monthStart in targetMonths) {
+        final mKey = DateFormatter.monthKey(monthStart);
+        if (bill.startMonth != null &&
+            bill.startMonth!.isNotEmpty &&
+            mKey.compareTo(bill.startMonth!) < 0) {
+          continue;
+        }
+        if (bill.endMonth != null &&
+            bill.endMonth!.isNotEmpty &&
+            mKey.compareTo(bill.endMonth!) > 0) {
+          continue;
+        }
+        if (paidSet.contains(mKey)) continue;
+
+        final lastDay = DateTime(monthStart.year, monthStart.month + 1, 0).day;
+        final dueDate = DateTime(
+          monthStart.year,
+          monthStart.month,
+          bill.dueDay.clamp(1, lastDay),
+        );
+
+        final h2Date = dueDate.subtract(const Duration(days: 2));
+        final h2Time = DateTime(
+          h2Date.year,
+          h2Date.month,
+          h2Date.day,
+          clampedHour,
+          clampedMin,
+        );
+        if (h2Time.isAfter(now)) {
+          planned.add(
+            PlannedBillReminder(
+              notificationId: stableNotificationId(
+                billId: bill.id,
+                monthKey: mKey,
+                kind: BillReminderKind.twoDaysBefore,
+              ),
+              billId: bill.id,
+              billName: bill.name,
+              monthKey: mKey,
+              kind: BillReminderKind.twoDaysBefore,
+              scheduledAt: h2Time,
+              dueDate: dueDate,
+              title: 'Pengingat Tagihan (H-2): ${bill.name}',
+              body:
+                  'Jatuh tempo 2 hari lagi (${DateFormatter.formatShortDate(dueDate)}) • ${CurrencyFormatter.formatIdr(bill.amount)}.',
+            ),
+          );
+        }
+
+        final dueTime = DateTime(
+          dueDate.year,
+          dueDate.month,
+          dueDate.day,
+          clampedHour,
+          clampedMin,
+        );
+        if (dueTime.isAfter(now)) {
+          planned.add(
+            PlannedBillReminder(
+              notificationId: stableNotificationId(
+                billId: bill.id,
+                monthKey: mKey,
+                kind: BillReminderKind.dueToday,
+              ),
+              billId: bill.id,
+              billName: bill.name,
+              monthKey: mKey,
+              kind: BillReminderKind.dueToday,
+              scheduledAt: dueTime,
+              dueDate: dueDate,
+              title: 'Jatuh Tempo Hari Ini: ${bill.name}',
+              body:
+                  'Tagihan ${bill.name} (${CurrencyFormatter.formatIdr(bill.amount)}) jatuh tempo hari ini. Tap untuk catat lunas.',
+            ),
+          );
+        }
+      }
+    }
+
+    planned.sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    return planned;
+  }
+
+  /// Generates a deterministic positive 31-bit integer ID for Android NotificationManager.
+  static int stableNotificationId({
+    required String billId,
+    required String monthKey,
+    required BillReminderKind kind,
+  }) {
+    final input = utf8.encode('$billId|$monthKey|${kind.name}');
+    var hash = 0x811c9dc5;
+    for (final b in input) {
+      hash ^= b;
+      hash = (hash * 0x01000193) & 0x7fffffff;
+    }
+    return hash == 0 ? 1 : hash;
+  }
+}
+
+/// Manages 100% offline Android scheduled local notifications for recurring bills
+/// (fires even when the app is closed and survives phone reboots).
+class BillNotificationService {
+  BillNotificationService({
+    required this.db,
+    required this.keyStore,
+    FlutterLocalNotificationsPlugin? plugin,
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+
+  final AppDatabase db;
+  final SecureKeyStore keyStore;
+  final FlutterLocalNotificationsPlugin _plugin;
+
+  bool _initialized = false;
+  static bool _tzInitialized = false;
+
+  static const String _channelId = 'si_hemat_bill_reminders';
+  static const String _channelName = 'Pengingat Tagihan Rutin';
+  static const String _channelDesc =
+      'Notifikasi pengingat tagihan H-2 (2 hari sebelum) dan Hari-H jatuh tempo.';
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _ensureTimezoneConfigured();
+
+    try {
+      const androidSettings = AndroidInitializationSettings('ic_stat_sihemat');
+      const initSettings = InitializationSettings(android: androidSettings);
+      await _plugin.initialize(settings: initSettings);
+      _initialized = true;
+    } catch (_) {
+      // Safe no-op in unit/widget tests or unsupported desktop platforms.
+    }
+  }
+
+  void _ensureTimezoneConfigured() {
+    if (_tzInitialized) return;
+    try {
+      tz_data.initializeTimeZones();
+      final localOffset = DateTime.now().timeZoneOffset;
+      tz.Location? matched;
+
+      // Prefer exact Indonesian zones for WIB/WITA/WIT before general offset search.
+      const preferredZones = [
+        'Asia/Jakarta',
+        'Asia/Makassar',
+        'Asia/Jayapura',
+      ];
+      for (final name in preferredZones) {
+        final loc = tz.timeZoneDatabase.locations[name];
+        if (loc != null && loc.currentTimeZone.offset == localOffset) {
+          matched = loc;
+          break;
+        }
+      }
+      matched ??= tz.timeZoneDatabase.locations.values
+          .where((loc) => loc.currentTimeZone.offset == localOffset)
+          .firstOrNull;
+      if (matched != null) {
+        tz.setLocalLocation(matched);
+      }
+      _tzInitialized = true;
+    } catch (_) {}
+  }
+
+  Future<BillNotificationSettings> loadSettings() async {
+    final enabledRaw =
+        await keyStore.read(SecureStorageKeys.billNotificationsEnabled);
+    final hourRaw =
+        await keyStore.read(SecureStorageKeys.billNotificationHour);
+    final enabled = enabledRaw != 'false'; // Enabled by default
+    final hour = int.tryParse(hourRaw ?? '') ?? 8;
+    return BillNotificationSettings(
+      enabled: enabled,
+      hour: hour.clamp(0, 23),
+    );
+  }
+
+  Future<bool> requestPermissions() async {
+    await initialize();
+    try {
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final notifGranted =
+          await androidImpl?.requestNotificationsPermission() ?? true;
+      return notifGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setEnabled({
+    required bool enabled,
+    String? familyId,
+  }) async {
+    await keyStore.write(
+      SecureStorageKeys.billNotificationsEnabled,
+      enabled ? 'true' : 'false',
+    );
+    if (enabled) {
+      await requestPermissions();
+      if (familyId != null) {
+        await rescheduleAllForFamily(familyId);
+      }
+    } else {
+      await cancelAllScheduled();
+    }
+  }
+
+  Future<void> setReminderHour({
+    required int hour,
+    String? familyId,
+  }) async {
+    await keyStore.write(
+      SecureStorageKeys.billNotificationHour,
+      hour.clamp(0, 23).toString(),
+    );
+    if (familyId != null) {
+      await rescheduleAllForFamily(familyId);
+    }
+  }
+
+  Future<void> cancelAllScheduled() async {
+    await initialize();
+    if (!_initialized) return;
+    try {
+      await _plugin.cancelAllPendingNotifications();
+    } catch (_) {}
+  }
+
+  /// Recomputes and reschedules all upcoming H-2 and Hari-H reminders for [familyId].
+  /// Returns the number of scheduled reminders.
+  Future<int> rescheduleAllForFamily(String familyId) async {
+    final settings = await loadSettings();
+    await initialize();
+    if (!_initialized) return 0;
+
+    try {
+      await _plugin.cancelAllPendingNotifications();
+    } catch (_) {
+      return 0;
+    }
+    if (!settings.enabled) return 0;
+
+    final allBills = await (db.select(db.recurringBills)
+          ..where((b) => b.familyId.equals(familyId)))
+        .get();
+    final reminders = BillNotificationPlanner.planReminders(
+      bills: allBills,
+      now: DateTime.now(),
+      reminderHour: settings.hour,
+    );
+
+    AndroidScheduleMode scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
+    try {
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final canExact = await androidImpl?.canScheduleExactNotifications() ?? false;
+      if (canExact) {
+        scheduleMode = AndroidScheduleMode.exactAllowWhileIdle;
+      }
+    } catch (_) {}
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: 'ic_stat_sihemat',
+      ),
+    );
+
+    var scheduledCount = 0;
+    for (final r in reminders) {
+      try {
+        final tzDate = tz.TZDateTime.from(r.scheduledAt.toUtc(), tz.local);
+        await _plugin.zonedSchedule(
+          id: r.notificationId,
+          title: r.title,
+          body: r.body,
+          scheduledDate: tzDate,
+          notificationDetails: details,
+          androidScheduleMode: scheduleMode,
+          payload: 'bill:${r.billId}:${r.monthKey}',
+        );
+        scheduledCount++;
+      } catch (_) {
+        // Fallback to inexact mode if Android restricts exact alarms at runtime.
+        if (scheduleMode != AndroidScheduleMode.inexactAllowWhileIdle) {
+          scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
+          try {
+            final tzDate = tz.TZDateTime.from(r.scheduledAt.toUtc(), tz.local);
+            await _plugin.zonedSchedule(
+              id: r.notificationId,
+              title: r.title,
+              body: r.body,
+              scheduledDate: tzDate,
+              notificationDetails: details,
+              androidScheduleMode: scheduleMode,
+              payload: 'bill:${r.billId}:${r.monthKey}',
+            );
+            scheduledCount++;
+          } catch (_) {}
+        }
+      }
+    }
+    return scheduledCount;
+  }
+
+  /// Sends an immediate test notification so the user can verify HP notifications work.
+  Future<void> sendTestNotification() async {
+    await requestPermissions();
+    if (!_initialized) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: 'ic_stat_sihemat',
+      ),
+    );
+    await _plugin.show(
+      id: 999901,
+      title: 'Pengingat Tagihan Si-Hemat Aktif',
+      body:
+          'Notifikasi H-2 (2 hari sebelum) & Hari-H jatuh tempo siap mengingatkan Anda meski aplikasi tertutup.',
+      notificationDetails: details,
+      payload: 'test',
+    );
+  }
+}

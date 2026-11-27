@@ -41,6 +41,12 @@ class _WifiSyncScreenState extends ConsumerState<WifiSyncScreen> {
         if (mounted) setState(() => _discovered = list);
       });
       _incomingSub = service.incomingSyncEvents.listen((res) {
+        final fam = ref.read(activeFamilyProvider).value;
+        if (fam != null) {
+          ref
+              .read(billNotificationServiceProvider)
+              .rescheduleAllForFamily(fam.id);
+        }
         if (!mounted) return;
         setState(() {
           _lastResultBanner =
@@ -72,6 +78,12 @@ class _WifiSyncScreenState extends ConsumerState<WifiSyncScreen> {
     try {
       final res =
           await ref.read(wifiLanSyncServiceProvider).syncWithPeer(peer);
+      final fam = ref.read(activeFamilyProvider).value;
+      if (fam != null) {
+        await ref
+            .read(billNotificationServiceProvider)
+            .rescheduleAllForFamily(fam.id);
+      }
       if (!mounted) return;
       setState(() {
         _lastResultBanner =
@@ -106,6 +118,12 @@ class _WifiSyncScreenState extends ConsumerState<WifiSyncScreen> {
         port: result.port,
       );
       final res = await service.syncWithPeer(peer);
+      final fam = ref.read(activeFamilyProvider).value;
+      if (fam != null) {
+        await ref
+            .read(billNotificationServiceProvider)
+            .rescheduleAllForFamily(fam.id);
+      }
       if (!mounted) return;
       setState(() {
         _lastResultBanner =

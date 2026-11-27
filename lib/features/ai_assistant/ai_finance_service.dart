@@ -8,6 +8,7 @@ import 'package:si_hemat/core/utils/currency_formatter.dart';
 import 'package:si_hemat/core/utils/date_formatter.dart';
 import 'package:si_hemat/features/ai_assistant/ai_models.dart';
 import 'package:si_hemat/features/ai_assistant/gemini_client.dart';
+import 'package:si_hemat/features/ai_assistant/nine_router_client.dart';
 import 'package:si_hemat/features/transactions/transaction_service.dart';
 import 'package:uuid/uuid.dart';
 
@@ -17,36 +18,90 @@ class AiFinanceService {
     required this.keyStore,
     required this.geminiClient,
     required this.transactionService,
-  });
+    NineRouterClient? nineRouterClient,
+  }) : nineRouterClient = nineRouterClient ?? NineRouterClient();
 
   final AppDatabase db;
   final SecureKeyStore keyStore;
   final GeminiInteractionsClient geminiClient;
+  final NineRouterClient nineRouterClient;
   final TransactionService transactionService;
   static const Uuid _uuid = Uuid();
 
   Future<AiConfig> loadConfig() async {
+    final providerRaw =
+        (await keyStore.read(SecureStorageKeys.aiProvider)) ?? '';
+    final provider = providerRaw == AiProviderType.nineRouter
+        ? AiProviderType.nineRouter
+        : AiProviderType.gemini;
+
     final key = (await keyStore.read(SecureStorageKeys.geminiApiKey)) ?? '';
     final model =
         (await keyStore.read(SecureStorageKeys.geminiModel)) ??
         GeminiModels.hydrogen;
+    final nrUrl =
+        (await keyStore.read(SecureStorageKeys.nineRouterBaseUrl)) ??
+        NineRouterClient.defaultBaseUrl;
+    final nrKey =
+        (await keyStore.read(SecureStorageKeys.nineRouterApiKey)) ?? '';
+    final nrModel =
+        (await keyStore.read(SecureStorageKeys.nineRouterModel)) ?? '';
+
     return AiConfig(
+      provider: provider,
       apiKey: key,
       model: model.isEmpty ? GeminiModels.hydrogen : model,
+      nineRouterBaseUrl:
+          nrUrl.isEmpty ? NineRouterClient.defaultBaseUrl : nrUrl,
+      nineRouterApiKey: nrKey,
+      nineRouterModel: nrModel,
     );
   }
 
   Future<void> saveConfig({
-    required String apiKey,
-    required String model,
+    String? provider,
+    String? apiKey,
+    String? model,
+    String? nineRouterBaseUrl,
+    String? nineRouterApiKey,
+    String? nineRouterModel,
   }) async {
-    final trimmed = apiKey.trim();
-    if (trimmed.isEmpty) {
-      await keyStore.delete(SecureStorageKeys.geminiApiKey);
-    } else {
-      await keyStore.write(SecureStorageKeys.geminiApiKey, trimmed);
+    if (provider != null) {
+      await keyStore.write(SecureStorageKeys.aiProvider, provider);
     }
-    await keyStore.write(SecureStorageKeys.geminiModel, model);
+    if (apiKey != null) {
+      final trimmed = apiKey.trim();
+      if (trimmed.isEmpty) {
+        await keyStore.delete(SecureStorageKeys.geminiApiKey);
+      } else {
+        await keyStore.write(SecureStorageKeys.geminiApiKey, trimmed);
+      }
+    }
+    if (model != null) {
+      await keyStore.write(SecureStorageKeys.geminiModel, model.trim());
+    }
+    if (nineRouterBaseUrl != null) {
+      final normalized = NineRouterClient.normalizeBaseUrl(nineRouterBaseUrl);
+      if (normalized.isEmpty) {
+        await keyStore.delete(SecureStorageKeys.nineRouterBaseUrl);
+      } else {
+        await keyStore.write(SecureStorageKeys.nineRouterBaseUrl, normalized);
+      }
+    }
+    if (nineRouterApiKey != null) {
+      final trimmed = nineRouterApiKey.trim();
+      if (trimmed.isEmpty) {
+        await keyStore.delete(SecureStorageKeys.nineRouterApiKey);
+      } else {
+        await keyStore.write(SecureStorageKeys.nineRouterApiKey, trimmed);
+      }
+    }
+    if (nineRouterModel != null) {
+      await keyStore.write(
+        SecureStorageKeys.nineRouterModel,
+        nineRouterModel.trim(),
+      );
+    }
   }
 
   Future<String> testApiKey({
@@ -54,6 +109,70 @@ class AiFinanceService {
     required String model,
   }) {
     return geminiClient.testConnection(apiKey: apiKey, model: model);
+  }
+
+  Future<String> testNineRouter({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+  }) {
+    return nineRouterClient.testConnection(
+      baseUrl: baseUrl,
+      apiKey: apiKey,
+      model: model,
+    );
+  }
+
+  Future<List<String>> fetchNineRouterModels({
+    required String baseUrl,
+    required String apiKey,
+  }) {
+    return nineRouterClient.listModels(baseUrl: baseUrl, apiKey: apiKey);
+  }
+
+  Future<String> _runPrompt({
+    required AiConfig config,
+    required String userText,
+    String? systemInstruction,
+    Uint8List? imageBytes,
+    String imageMimeType = 'image/jpeg',
+    Map<String, dynamic>? jsonSchema,
+    int? maxOutputTokens,
+  }) {
+    if (config.isNineRouter) {
+      return nineRouterClient.createChatCompletion(
+        baseUrl: config.nineRouterBaseUrl,
+        apiKey: config.nineRouterApiKey,
+        model: config.nineRouterModel,
+        userText: userText,
+        systemInstruction: systemInstruction,
+        imageBytes: imageBytes,
+        imageMimeType: imageMimeType,
+        jsonSchema: jsonSchema,
+        maxTokens: maxOutputTokens,
+      );
+    }
+
+    final Object geminiInput = imageBytes != null
+        ? [
+            {'type': 'text', 'text': userText},
+            {
+              'type': 'image',
+              'data': base64Encode(imageBytes),
+              'mime_type': imageMimeType,
+            },
+          ]
+        : userText;
+
+    return geminiClient.createInteraction(
+      apiKey: config.apiKey,
+      model: config.model,
+      systemInstruction: systemInstruction,
+      input: geminiInput,
+      jsonSchema: jsonSchema,
+      maxOutputTokens: maxOutputTokens,
+      store: false,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -130,13 +249,11 @@ Aturan ketat:
       'required': ['reply', 'transactions'],
     };
 
-    final rawJson = await geminiClient.createInteraction(
-      apiKey: config.apiKey,
-      model: config.model,
+    final rawJson = await _runPrompt(
+      config: config,
       systemInstruction: systemInstruction,
-      input: userText,
+      userText: userText,
       jsonSchema: schema,
-      store: false,
     );
 
     return _decodeDraftResult(
@@ -214,24 +331,14 @@ Aturan ketat:
       'required': ['reply', 'transactions'],
     };
 
-    final rawJson = await geminiClient.createInteraction(
-      apiKey: config.apiKey,
-      model: config.model,
+    final rawJson = await _runPrompt(
+      config: config,
       systemInstruction: systemInstruction,
-      input: [
-        {
-          'type': 'text',
-          'text':
-              'Baca struk belanja atau screenshot bukti pembayaran/QRIS ini dan ekstrak data transaksinya.',
-        },
-        {
-          'type': 'image',
-          'data': base64Encode(imageBytes),
-          'mime_type': mimeType,
-        },
-      ],
+      userText:
+          'Baca struk belanja atau screenshot bukti pembayaran/QRIS ini dan ekstrak data transaksinya.',
+      imageBytes: imageBytes,
+      imageMimeType: mimeType,
       jsonSchema: schema,
-      store: false,
     );
 
     return _decodeDraftResult(
@@ -323,13 +430,11 @@ PERTANYAAN PENGGUNA:
 $trimmedQ
 ''';
 
-    final answer = await geminiClient.createInteraction(
-      apiKey: config.apiKey,
-      model: config.model,
+    final answer = await _runPrompt(
+      config: config,
       systemInstruction: systemInstruction,
-      input: prompt,
+      userText: prompt,
       maxOutputTokens: 1200,
-      store: false,
     );
 
     await db.insertAiChatMessage(
@@ -533,11 +638,18 @@ $trimmedQ
   }
 
   String _stripCodeFence(String raw) {
-    final trimmed = raw.trim();
-    if (!trimmed.startsWith('```')) return trimmed;
-    final lines = trimmed.split('\n');
-    if (lines.length >= 3 && lines.last.trim().startsWith('```')) {
-      return lines.sublist(1, lines.length - 1).join('\n').trim();
+    var trimmed = NineRouterClient.stripThinkBlocks(raw).trim();
+    if (trimmed.startsWith('```')) {
+      final lines = trimmed.split('\n');
+      if (lines.length >= 3 && lines.last.trim().startsWith('```')) {
+        trimmed = lines.sublist(1, lines.length - 1).join('\n').trim();
+      }
+    }
+    // If an LLM wrapped JSON in prose, slice the outermost {...} object safely.
+    final start = trimmed.indexOf('{');
+    final end = trimmed.lastIndexOf('}');
+    if (start > 0 && end > start) {
+      trimmed = trimmed.substring(start, end + 1);
     }
     return trimmed;
   }

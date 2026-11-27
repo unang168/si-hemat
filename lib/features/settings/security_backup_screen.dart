@@ -193,6 +193,12 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
             rawBackupContent: rawContent,
             password: password,
           );
+      final restoredFam = await ref.read(databaseProvider).getActiveFamily();
+      if (restoredFam != null) {
+        await ref
+            .read(billNotificationServiceProvider)
+            .rescheduleAllForFamily(restoredFam.id);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -229,6 +235,7 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final lockAsync = ref.watch(appLockStatusProvider);
+    final notifAsync = ref.watch(billNotificationSettingsProvider);
     final themeMode = ref.watch(themeModeProvider);
     final autoLockSec = ref.watch(autoLockSecondsProvider);
     final family = ref.watch(activeFamilyProvider).value;
@@ -288,6 +295,120 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
                         .read(themeModeProvider.notifier)
                         .setThemeMode(s.first),
                   ),
+                ],
+              ),
+            ),
+          ),
+
+          // Bill Reminders (Background Android Notifications: H-2 & Hari-H)
+          const SizedBox(height: 20),
+          Text(
+            'Notifikasi Pengingat Tagihan',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          notifAsync.when(
+            loading: () => const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            ),
+            error: (e, _) => Text('Error: $e'),
+            data: (notif) => Card(
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    secondary: const Icon(Icons.notifications_active_outlined),
+                    title: const Text('Pengingat H-2 & Hari-H Jatuh Tempo'),
+                    subtitle: const Text(
+                      'Muncul otomatis di HP saat 2 hari sebelum & hari jatuh tempo meski aplikasi tertutup',
+                    ),
+                    value: notif.enabled,
+                    onChanged: _busy
+                        ? null
+                        : (val) async {
+                            await ref
+                                .read(billNotificationServiceProvider)
+                                .setEnabled(
+                                  enabled: val,
+                                  familyId: family?.id,
+                                );
+                            ref.invalidate(billNotificationSettingsProvider);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  val
+                                      ? 'Pengingat tagihan H-2 & Hari-H diaktifkan.'
+                                      : 'Pengingat tagihan dimatikan.',
+                                ),
+                              ),
+                            );
+                          },
+                  ),
+                  if (notif.enabled) ...[
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.schedule_rounded),
+                      title: const Text('Jam Notifikasi'),
+                      subtitle: Text(
+                        'Setiap pukul ${notif.hour.toString().padLeft(2, '0')}:00',
+                      ),
+                      trailing: DropdownButton<int>(
+                        value: [7, 8, 9, 12, 19].contains(notif.hour)
+                            ? notif.hour
+                            : 8,
+                        underline: const SizedBox.shrink(),
+                        items: const [
+                          DropdownMenuItem(value: 7, child: Text('07:00')),
+                          DropdownMenuItem(value: 8, child: Text('08:00')),
+                          DropdownMenuItem(value: 9, child: Text('09:00')),
+                          DropdownMenuItem(value: 12, child: Text('12:00')),
+                          DropdownMenuItem(value: 19, child: Text('19:00')),
+                        ],
+                        onChanged: (v) async {
+                          if (v == null) return;
+                          await ref
+                              .read(billNotificationServiceProvider)
+                              .setReminderHour(
+                                hour: v,
+                                familyId: family?.id,
+                              );
+                          ref.invalidate(billNotificationSettingsProvider);
+                        },
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.send_outlined),
+                      title: const Text('Kirim Notifikasi Tes Sekarang'),
+                      subtitle: const Text(
+                        'Pastikan izin notifikasi HP aktif',
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () async {
+                        await ref
+                            .read(billNotificationServiceProvider)
+                            .sendTestNotification();
+                        if (family != null) {
+                          final count = await ref
+                              .read(billNotificationServiceProvider)
+                              .rescheduleAllForFamily(family.id);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Notifikasi tes dikirim! ($count jadwal H-2/Hari-H aktif.)',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -487,8 +608,10 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.auto_awesome_outlined),
-                  title: const Text('Pengaturan Gemini AI'),
-                  subtitle: const Text('API Key gratis Google AI Studio & model'),
+                  title: const Text('Pengaturan AI (Gemini / 9Router)'),
+                  subtitle: const Text(
+                    'Google AI Studio gratis atau endpoint 9Router (OpenAI)',
+                  ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => context.push('/ai-settings'),
                 ),
@@ -506,7 +629,7 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Si-Hemat v1.0.0 • Offline-First Family Finance + Gemini AI',
+              'Si-Hemat v1.1.0 • Offline-First Family Finance + Gemini / 9Router AI',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: colors.onSurfaceVariant,
               ),

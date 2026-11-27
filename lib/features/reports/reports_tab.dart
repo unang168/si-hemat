@@ -301,7 +301,7 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    'Asisten AI Laporan (Gemini)',
+                                    'Asisten AI Laporan (Gemini / 9Router)',
                                     style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w700,
                                     ),

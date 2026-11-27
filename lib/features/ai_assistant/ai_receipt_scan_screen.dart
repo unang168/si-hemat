@@ -170,7 +170,7 @@ class _AiReceiptScanScreenState extends ConsumerState<AiReceiptScanScreen> {
                   color: AppTheme.warningColor,
                 ),
                 title: const Text(
-                  'Gemini API Key belum diatur',
+                  'Pengaturan AI belum dikonfigurasi',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 trailing: TextButton(

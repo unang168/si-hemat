@@ -75,7 +75,7 @@ class DashboardTab extends ConsumerWidget {
               onPressed: () => ref.read(hideBalanceProvider.notifier).toggle(),
             ),
             IconButton(
-              tooltip: 'Pengaturan Gemini AI',
+              tooltip: 'Pengaturan AI (Gemini / 9Router)',
               icon: const Icon(Icons.auto_awesome_outlined),
               onPressed: () => context.push('/ai-settings'),
             ),

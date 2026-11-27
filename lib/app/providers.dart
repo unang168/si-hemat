@@ -7,6 +7,8 @@ import 'package:si_hemat/core/security/secure_storage_service.dart';
 import 'package:si_hemat/features/ai_assistant/ai_finance_service.dart';
 import 'package:si_hemat/features/ai_assistant/ai_models.dart';
 import 'package:si_hemat/features/ai_assistant/gemini_client.dart';
+import 'package:si_hemat/features/ai_assistant/nine_router_client.dart';
+import 'package:si_hemat/features/budgets/bill_notification_service.dart';
 import 'package:si_hemat/features/budgets/budget_bill_service.dart';
 import 'package:si_hemat/features/categories/category_service.dart';
 import 'package:si_hemat/features/family_sync/wifi_lan_sync_service.dart';
@@ -49,11 +51,24 @@ final transactionServiceProvider = Provider<TransactionService>((ref) {
   );
 });
 
+final billNotificationServiceProvider = Provider<BillNotificationService>((ref) {
+  return BillNotificationService(
+    db: ref.watch(databaseProvider),
+    keyStore: ref.watch(secureKeyStoreProvider),
+  );
+});
+
+final billNotificationSettingsProvider =
+    FutureProvider<BillNotificationSettings>((ref) {
+  return ref.watch(billNotificationServiceProvider).loadSettings();
+});
+
 final budgetBillServiceProvider = Provider<BudgetBillService>((ref) {
   return BudgetBillService(
     db: ref.watch(databaseProvider),
     keyStore: ref.watch(secureKeyStoreProvider),
     onboarding: ref.watch(onboardingServiceProvider),
+    notifications: ref.watch(billNotificationServiceProvider),
   );
 });
 
@@ -65,11 +80,16 @@ final geminiClientProvider = Provider<GeminiInteractionsClient>((ref) {
   return GeminiInteractionsClient();
 });
 
+final nineRouterClientProvider = Provider<NineRouterClient>((ref) {
+  return NineRouterClient();
+});
+
 final aiFinanceServiceProvider = Provider<AiFinanceService>((ref) {
   return AiFinanceService(
     db: ref.watch(databaseProvider),
     keyStore: ref.watch(secureKeyStoreProvider),
     geminiClient: ref.watch(geminiClientProvider),
+    nineRouterClient: ref.watch(nineRouterClientProvider),
     transactionService: ref.watch(transactionServiceProvider),
   );
 });

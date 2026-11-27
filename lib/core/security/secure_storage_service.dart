@@ -14,6 +14,12 @@ class SecureStorageKeys {
   static const String familySecret = 'sihemat_family_secret';
   static const String geminiApiKey = 'sihemat_gemini_api_key';
   static const String geminiModel = 'sihemat_gemini_model';
+  static const String aiProvider = 'sihemat_ai_provider';
+  static const String nineRouterBaseUrl = 'sihemat_9router_base_url';
+  static const String nineRouterApiKey = 'sihemat_9router_api_key';
+  static const String nineRouterModel = 'sihemat_9router_model';
+  static const String billNotificationsEnabled = 'sihemat_bill_notif_enabled';
+  static const String billNotificationHour = 'sihemat_bill_notif_hour';
   static const String pinHash = 'sihemat_pin_hash';
   static const String appLockEnabled = 'sihemat_app_lock_enabled';
   static const String biometricEnabled = 'sihemat_biometric_enabled';
