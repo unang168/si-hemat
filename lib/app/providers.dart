@@ -63,6 +63,16 @@ final billNotificationSettingsProvider =
   return ref.watch(billNotificationServiceProvider).loadSettings();
 });
 
+final upcomingBillRemindersProvider =
+    FutureProvider<List<PlannedBillReminder>>((ref) async {
+  final family = ref.watch(activeFamilyProvider).value;
+  ref.watch(billNotificationSettingsProvider);
+  if (family == null) return const [];
+  return ref
+      .watch(billNotificationServiceProvider)
+      .previewUpcomingReminders(family.id);
+});
+
 final budgetBillServiceProvider = Provider<BudgetBillService>((ref) {
   return BudgetBillService(
     db: ref.watch(databaseProvider),

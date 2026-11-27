@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:si_hemat/app/providers.dart';
 import 'package:si_hemat/app/theme/app_theme.dart';
 import 'package:si_hemat/core/database/app_database.dart';
+import 'package:si_hemat/core/utils/date_formatter.dart';
 
 class SecurityBackupScreen extends ConsumerStatefulWidget {
   const SecurityBackupScreen({super.key});
@@ -236,6 +237,8 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
     final colors = theme.colorScheme;
     final lockAsync = ref.watch(appLockStatusProvider);
     final notifAsync = ref.watch(billNotificationSettingsProvider);
+    final upcomingReminders =
+        ref.watch(upcomingBillRemindersProvider).value ?? const [];
     final themeMode = ref.watch(themeModeProvider);
     final autoLockSec = ref.watch(autoLockSecondsProvider);
     final family = ref.watch(activeFamilyProvider).value;
@@ -417,10 +420,33 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
                     ],
                     const Divider(height: 1),
                     ListTile(
+                      leading: Icon(
+                        notif.exactAlarmAllowed
+                            ? Icons.verified_outlined
+                            : Icons.schedule_outlined,
+                        color: notif.exactAlarmAllowed
+                            ? AppTheme.incomeOf(context)
+                            : AppTheme.warningOf(context),
+                      ),
+                      title: Text(
+                        upcomingReminders.isEmpty
+                            ? 'Belum ada jadwal tagihan aktif'
+                            : '${upcomingReminders.length} jadwal H-2 / Hari-H terpasang',
+                      ),
+                      subtitle: Text(
+                        upcomingReminders.isEmpty
+                            ? (notif.exactAlarmAllowed
+                                ? 'Mode Alarm Tepat Waktu aktif • Tambah tagihan rutin di tab Anggaran'
+                                : 'Mode Alarm Hemat Baterai (±1 jam)')
+                            : 'Berikutnya: ${upcomingReminders.first.billName} • ${DateFormatter.formatShortDate(upcomingReminders.first.scheduledAt)} ${upcomingReminders.first.scheduledAt.hour.toString().padLeft(2, '0')}:00 (${notif.exactAlarmAllowed ? 'Tepat Waktu' : 'Rentang ±1 jam'})',
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
                       leading: const Icon(Icons.send_outlined),
                       title: const Text('Kirim Notifikasi Tes Sekarang'),
                       subtitle: const Text(
-                        'Pastikan izin notifikasi HP aktif',
+                        'Cek langsung pop-up & suara notifikasi di HP',
                       ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () async {
@@ -433,12 +459,55 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
                             count = await ref
                                 .read(billNotificationServiceProvider)
                                 .rescheduleAllForFamily(family.id);
+                            ref.invalidate(upcomingBillRemindersProvider);
                           }
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
                                 'Notifikasi tes dikirim! ($count jadwal H-2/Hari-H aktif.)',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.toString().replaceFirst('Bad state: ', ''),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.timer_outlined),
+                      title: const Text('Tes Alarm Background (15 Detik)'),
+                      subtitle: const Text(
+                        'Jadwalkan alarm 15 detik lagi lalu tutup aplikasi untuk uji background',
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () async {
+                        try {
+                          final res = await ref
+                              .read(billNotificationServiceProvider)
+                              .scheduleTestNotificationInSeconds(seconds: 15);
+                          if (!context.mounted) return;
+                          final hh = res.scheduledAt.hour
+                              .toString()
+                              .padLeft(2, '0');
+                          final mm = res.scheduledAt.minute
+                              .toString()
+                              .padLeft(2, '0');
+                          final ss = res.scheduledAt.second
+                              .toString()
+                              .padLeft(2, '0');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Alarm tes dipasang untuk $hh:$mm:$ss (${res.exact ? 'Tepat Waktu' : 'Inexact'}). Silakan tutup aplikasi & tunggu 15 detik!',
                               ),
                             ),
                           );
@@ -675,7 +744,7 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Si-Hemat v1.1.1 • Offline-First Family Finance + Gemini / 9Router AI',
+              'Si-Hemat v1.1.2 • Offline-First Family Finance + Gemini / 9Router AI',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: colors.onSurfaceVariant,
               ),

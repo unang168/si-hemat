@@ -434,6 +434,74 @@ class BillNotificationService {
     return scheduledCount;
   }
 
+  /// Returns the planned upcoming H-2 & Hari-H reminders for UI display.
+  Future<List<PlannedBillReminder>> previewUpcomingReminders(
+    String familyId,
+  ) async {
+    final settings = await loadSettings();
+    if (!settings.enabled) return const [];
+    final allBills = await (db.select(db.recurringBills)
+          ..where((b) => b.familyId.equals(familyId)))
+        .get();
+    return BillNotificationPlanner.planReminders(
+      bills: allBills,
+      now: DateTime.now(),
+      reminderHour: settings.hour,
+    );
+  }
+
+  /// Schedules a real AlarmManager background test notification [seconds] from now
+  /// using the exact same `zonedSchedule` pipeline as H-2 & Hari-H bill reminders.
+  Future<({DateTime scheduledAt, bool exact})> scheduleTestNotificationInSeconds({
+    int seconds = 15,
+  }) async {
+    final granted = await requestPermissions();
+    if (!_initialized) {
+      throw StateError(
+        'Layanan notifikasi gagal diinisialisasi${_lastInitError != null ? ': $_lastInitError' : '.'}',
+      );
+    }
+    if (!granted) {
+      throw StateError(
+        'Izin notifikasi HP belum diaktifkan. Aktifkan izin Notifikasi untuk Si-Hemat di Setelan Aplikasi HP Anda.',
+      );
+    }
+
+    final exactAllowed = await canScheduleExactAlarms();
+    final target = DateTime.now().add(Duration(seconds: seconds));
+    final tzDate = tz.TZDateTime.from(target.toUtc(), tz.local);
+    final details = _buildNotificationDetails();
+
+    var usedExact = exactAllowed;
+    try {
+      await _plugin.zonedSchedule(
+        id: 999902,
+        title: 'Tes Alarm Background Si-Hemat Berhasil!',
+        body:
+            'Alarm terjadwal bekerja normal meski aplikasi tertutup. Pengingat H-2 & Hari-H akan muncul tepat waktu.',
+        scheduledDate: tzDate,
+        notificationDetails: details,
+        androidScheduleMode: exactAllowed
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: 'test_scheduled',
+      );
+    } catch (_) {
+      usedExact = false;
+      await _plugin.zonedSchedule(
+        id: 999902,
+        title: 'Tes Alarm Background Si-Hemat Berhasil!',
+        body:
+            'Alarm terjadwal bekerja normal meski aplikasi tertutup. Pengingat H-2 & Hari-H akan muncul tepat waktu.',
+        scheduledDate: tzDate,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: 'test_scheduled',
+      );
+    }
+    return (scheduledAt: target, exact: usedExact);
+  }
+
   /// Sends an immediate test notification AND throws a descriptive error if
   /// initialization or permission failed so the UI never fails silently.
   Future<void> sendTestNotification() async {
