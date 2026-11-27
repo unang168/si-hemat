@@ -122,6 +122,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             qrPayloadRaw: _qrPayloadCtrl.text,
             memberName: _memberNameCtrl.text,
           );
+      ref.invalidate(aiConfigProvider);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

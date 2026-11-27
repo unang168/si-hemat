@@ -12,16 +12,29 @@ class FamilyQrScreen extends ConsumerStatefulWidget {
 }
 
 class _FamilyQrScreenState extends ConsumerState<FamilyQrScreen> {
-  bool _includeApiKey = false;
+  bool _includeAiConfig = false;
+
+  bool _isLocalhostUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('://localhost') ||
+        lower.contains('://127.0.0.1') ||
+        lower.contains('://10.0.2.2');
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final inviteAsync = ref.watch(familyInvitePayloadProvider(_includeApiKey));
+    final inviteAsync =
+        ref.watch(familyInvitePayloadProvider(_includeAiConfig));
     final membersAsync = ref.watch(familyMembersProvider);
     final hashAsync = ref.watch(familyHashProvider);
-    final aiConfigured = ref.watch(aiConfigProvider).value?.isConfigured ?? false;
+    final aiConfig = ref.watch(aiConfigProvider).value;
+    final aiConfigured = aiConfig?.isConfigured ?? false;
+    final isNineRouter = aiConfig?.isNineRouter ?? false;
+    final showLocalhostWarning = _includeAiConfig &&
+        isNineRouter &&
+        _isLocalhostUrl(aiConfig?.nineRouterBaseUrl ?? '');
 
     return Scaffold(
       appBar: AppBar(
@@ -30,15 +43,55 @@ class _FamilyQrScreenState extends ConsumerState<FamilyQrScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          if (aiConfigured) ...[
+          if (aiConfigured && aiConfig != null) ...[
             Card(
-              child: SwitchListTile(
-                value: _includeApiKey,
-                onChanged: (v) => setState(() => _includeApiKey = v),
-                title: const Text('Sertakan Gemini API Key dalam QR'),
-                subtitle: const Text(
-                  'Agar pasangan langsung bisa memakai fitur AI tanpa mengetik API Key manual.',
-                ),
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    value: _includeAiConfig,
+                    onChanged: (v) => setState(() => _includeAiConfig = v),
+                    title: Text(
+                      isNineRouter
+                          ? 'Sertakan Konfigurasi AI (9Router) dalam QR'
+                          : 'Sertakan Konfigurasi AI (Gemini) dalam QR',
+                    ),
+                    subtitle: Text(
+                      isNineRouter
+                          ? 'Membagikan Base URL, API Key & model (${aiConfig.nineRouterModel}) agar pasangan langsung bisa memakai 9Router tanpa setting manual.'
+                          : 'Membagikan Gemini API Key & model aktif (${aiConfig.model}) agar pasangan langsung bisa memakai fitur AI tanpa mengetik manual.',
+                    ),
+                  ),
+                  if (showLocalhostWarning)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: colors.errorContainer.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 18,
+                              color: colors.error,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Base URL 9Router memakai localhost/127.0.0.1 yang tidak bisa diakses dari HP pasangan. Gunakan IP LAN (mis. http://192.168.1.10:20128) atau domain publik di Pengaturan AI.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colors.onErrorContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 14),
@@ -106,6 +159,20 @@ class _FamilyQrScreenState extends ConsumerState<FamilyQrScreen> {
                               const Icon(Icons.fingerprint_rounded, size: 18),
                           label: Text('ID Sync: ${hashAsync.value}'),
                         ),
+                      if (payload.hasAiConfig) ...[
+                        const SizedBox(height: 8),
+                        Chip(
+                          avatar: const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 18,
+                          ),
+                          label: Text(
+                            payload.aiProvider == 'nine_router'
+                                ? 'AI disertakan: 9Router (${payload.nineRouterModel ?? ''})'
+                                : 'AI disertakan: Gemini',
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: () async {

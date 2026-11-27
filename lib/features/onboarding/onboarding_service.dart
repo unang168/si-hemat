@@ -2,6 +2,7 @@ import 'package:si_hemat/core/constants/sync_constants.dart';
 import 'package:si_hemat/core/database/app_database.dart';
 import 'package:si_hemat/core/security/family_crypto.dart';
 import 'package:si_hemat/core/security/secure_storage_service.dart';
+import 'package:si_hemat/features/ai_assistant/ai_models.dart';
 import 'package:uuid/uuid.dart';
 
 class OnboardingResult {
@@ -110,10 +111,64 @@ class OnboardingService {
     await keyStore.write(SecureStorageKeys.memberId, memberId);
     await keyStore.write(SecureStorageKeys.familySecret, payload.familySecret);
 
-    if (payload.geminiApiKey != null && payload.geminiApiKey!.isNotEmpty) {
+    // Import bundled AI configuration (9Router or Gemini) if included in QR
+    final hasNineRouter = payload.nineRouterBaseUrl != null &&
+        payload.nineRouterBaseUrl!.isNotEmpty &&
+        payload.nineRouterModel != null &&
+        payload.nineRouterModel!.isNotEmpty;
+    final hasGemini =
+        payload.geminiApiKey != null && payload.geminiApiKey!.isNotEmpty;
+
+    if (hasNineRouter) {
+      await keyStore.write(
+        SecureStorageKeys.nineRouterBaseUrl,
+        payload.nineRouterBaseUrl!,
+      );
+      await keyStore.write(
+        SecureStorageKeys.nineRouterModel,
+        payload.nineRouterModel!,
+      );
+      if (payload.nineRouterApiKey != null &&
+          payload.nineRouterApiKey!.isNotEmpty) {
+        await keyStore.write(
+          SecureStorageKeys.nineRouterApiKey,
+          payload.nineRouterApiKey!,
+        );
+      }
+    }
+
+    if (hasGemini) {
       await keyStore.write(
         SecureStorageKeys.geminiApiKey,
         payload.geminiApiKey!,
+      );
+      if (payload.geminiModel != null && payload.geminiModel!.isNotEmpty) {
+        await keyStore.write(
+          SecureStorageKeys.geminiModel,
+          payload.geminiModel!,
+        );
+      }
+    }
+
+    if (payload.aiProvider == AiProviderType.nineRouter && hasNineRouter) {
+      await keyStore.write(
+        SecureStorageKeys.aiProvider,
+        AiProviderType.nineRouter,
+      );
+    } else if (payload.aiProvider == AiProviderType.gemini && hasGemini) {
+      await keyStore.write(
+        SecureStorageKeys.aiProvider,
+        AiProviderType.gemini,
+      );
+    } else if (hasNineRouter) {
+      await keyStore.write(
+        SecureStorageKeys.aiProvider,
+        AiProviderType.nineRouter,
+      );
+    } else if (hasGemini) {
+      await keyStore.write(
+        SecureStorageKeys.aiProvider,
+        AiProviderType.gemini,
       );
     }
 
@@ -126,16 +181,56 @@ class OnboardingService {
   }
 
   /// Builds the QR payload string for inviting another family member.
+  /// When [includeAiConfig] is true, bundles the currently active BYOK AI
+  /// configuration (either Gemini or 9Router) so the invited member can use AI right away.
   Future<FamilyPairingPayload?> buildInvitePayload({
-    bool includeGeminiApiKey = false,
+    bool includeAiConfig = false,
   }) async {
     final family = await db.getActiveFamily();
     final secret = await keyStore.read(SecureStorageKeys.familySecret);
     if (family == null || secret == null || secret.isEmpty) return null;
 
-    String? apiKey;
-    if (includeGeminiApiKey) {
-      apiKey = await keyStore.read(SecureStorageKeys.geminiApiKey);
+    String? aiProvider;
+    String? geminiApiKey;
+    String? geminiModel;
+    String? nineRouterBaseUrl;
+    String? nineRouterApiKey;
+    String? nineRouterModel;
+
+    if (includeAiConfig) {
+      final activeProvider =
+          (await keyStore.read(SecureStorageKeys.aiProvider))?.trim();
+      if (activeProvider == AiProviderType.nineRouter) {
+        final baseUrl =
+            (await keyStore.read(SecureStorageKeys.nineRouterBaseUrl))?.trim();
+        final model =
+            (await keyStore.read(SecureStorageKeys.nineRouterModel))?.trim();
+        final apiKey =
+            (await keyStore.read(SecureStorageKeys.nineRouterApiKey))?.trim();
+        if (baseUrl != null &&
+            baseUrl.isNotEmpty &&
+            model != null &&
+            model.isNotEmpty) {
+          aiProvider = AiProviderType.nineRouter;
+          nineRouterBaseUrl = baseUrl;
+          nineRouterModel = model;
+          if (apiKey != null && apiKey.isNotEmpty) {
+            nineRouterApiKey = apiKey;
+          }
+        }
+      } else {
+        final apiKey =
+            (await keyStore.read(SecureStorageKeys.geminiApiKey))?.trim();
+        final model =
+            (await keyStore.read(SecureStorageKeys.geminiModel))?.trim();
+        if (apiKey != null && apiKey.isNotEmpty) {
+          aiProvider = AiProviderType.gemini;
+          geminiApiKey = apiKey;
+          if (model != null && model.isNotEmpty) {
+            geminiModel = model;
+          }
+        }
+      }
     }
 
     return FamilyPairingPayload(
@@ -144,7 +239,12 @@ class OnboardingService {
       familyName: family.name,
       familySecret: secret,
       paydayDay: family.paydayDay,
-      geminiApiKey: apiKey,
+      aiProvider: aiProvider,
+      geminiApiKey: geminiApiKey,
+      geminiModel: geminiModel,
+      nineRouterBaseUrl: nineRouterBaseUrl,
+      nineRouterApiKey: nineRouterApiKey,
+      nineRouterModel: nineRouterModel,
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:si_hemat/core/constants/sync_constants.dart';
 import 'package:si_hemat/core/database/app_database.dart';
+import 'package:si_hemat/core/security/family_crypto.dart';
 import 'package:si_hemat/core/security/secure_storage_service.dart';
 import 'package:si_hemat/features/ai_assistant/ai_finance_service.dart';
 import 'package:si_hemat/features/ai_assistant/ai_models.dart';
@@ -401,6 +402,168 @@ void main() {
         DateTime(2026, 1, 30, 8, 0),
         DateTime(2026, 2, 1, 8, 0),
       ]);
+    });
+  });
+
+  group('v1.1.3: Family Invite QR AI Config Sharing (9Router & Gemini)', () {
+    test('bundles 9Router config into QR and restores it automatically on member join',
+        () async {
+      final adminDb = AppDatabase(NativeDatabase.memory());
+      final adminKeys = _MemKeyStore();
+      final adminOnboarding =
+          OnboardingService(db: adminDb, keyStore: adminKeys);
+      final adminTx = TransactionService(
+        db: adminDb,
+        keyStore: adminKeys,
+        onboarding: adminOnboarding,
+      );
+      final adminAi = AiFinanceService(
+        db: adminDb,
+        keyStore: adminKeys,
+        geminiClient: GeminiInteractionsClient(),
+        nineRouterClient: NineRouterClient(),
+        transactionService: adminTx,
+      );
+
+      await adminOnboarding.createNewFamily(
+        familyName: 'Keluarga Erwin',
+        adminName: 'Erwin',
+        paydayDay: 25,
+      );
+      await adminAi.saveConfig(
+        provider: AiProviderType.nineRouter,
+        nineRouterBaseUrl: 'http://192.168.1.50:20128',
+        nineRouterApiKey: 'sk-9router-fam',
+        nineRouterModel: 'free-combo',
+      );
+
+      // Toggle OFF -> no AI credentials included
+      final privateInvite =
+          await adminOnboarding.buildInvitePayload(includeAiConfig: false);
+      expect(privateInvite, isNotNull);
+      expect(privateInvite!.hasAiConfig, isFalse);
+      expect(privateInvite.toQrString().contains('sk-9router-fam'), isFalse);
+
+      // Toggle ON -> 9Router config bundled into QR
+      final inviteWithAi =
+          await adminOnboarding.buildInvitePayload(includeAiConfig: true);
+      expect(inviteWithAi, isNotNull);
+      expect(inviteWithAi!.hasAiConfig, isTrue);
+      expect(inviteWithAi.aiProvider, AiProviderType.nineRouter);
+      expect(inviteWithAi.nineRouterBaseUrl, 'http://192.168.1.50:20128/v1');
+      expect(inviteWithAi.nineRouterApiKey, 'sk-9router-fam');
+      expect(inviteWithAi.nineRouterModel, 'free-combo');
+
+      // Spouse joins using QR string on a fresh device
+      final spouseDb = AppDatabase(NativeDatabase.memory());
+      final spouseKeys = _MemKeyStore();
+      final spouseOnboarding =
+          OnboardingService(db: spouseDb, keyStore: spouseKeys);
+      final spouseTx = TransactionService(
+        db: spouseDb,
+        keyStore: spouseKeys,
+        onboarding: spouseOnboarding,
+      );
+      final spouseAi = AiFinanceService(
+        db: spouseDb,
+        keyStore: spouseKeys,
+        geminiClient: GeminiInteractionsClient(),
+        nineRouterClient: NineRouterClient(),
+        transactionService: spouseTx,
+      );
+
+      await spouseOnboarding.joinFamilyFromQr(
+        qrPayloadRaw: inviteWithAi.toQrString(),
+        memberName: 'Pasangan',
+      );
+
+      final spouseCfg = await spouseAi.loadConfig();
+      expect(spouseCfg.isNineRouter, isTrue);
+      expect(spouseCfg.isConfigured, isTrue);
+      expect(spouseCfg.nineRouterBaseUrl, 'http://192.168.1.50:20128/v1');
+      expect(spouseCfg.nineRouterApiKey, 'sk-9router-fam');
+      expect(spouseCfg.nineRouterModel, 'free-combo');
+
+      await adminDb.close();
+      await spouseDb.close();
+    });
+
+    test('bundles Gemini config & stays backwards-compatible with legacy v1.0 QR',
+        () async {
+      final adminDb = AppDatabase(NativeDatabase.memory());
+      final adminKeys = _MemKeyStore();
+      final adminOnboarding =
+          OnboardingService(db: adminDb, keyStore: adminKeys);
+      final adminTx = TransactionService(
+        db: adminDb,
+        keyStore: adminKeys,
+        onboarding: adminOnboarding,
+      );
+      final adminAi = AiFinanceService(
+        db: adminDb,
+        keyStore: adminKeys,
+        geminiClient: GeminiInteractionsClient(),
+        nineRouterClient: NineRouterClient(),
+        transactionService: adminTx,
+      );
+
+      await adminOnboarding.createNewFamily(
+        familyName: 'Keluarga Gemini',
+        adminName: 'Admin',
+        paydayDay: 28,
+      );
+      await adminAi.saveConfig(
+        provider: AiProviderType.gemini,
+        apiKey: 'AIza-family-key',
+        model: GeminiModels.hydrogen,
+      );
+
+      final invite =
+          await adminOnboarding.buildInvitePayload(includeAiConfig: true);
+      expect(invite!.aiProvider, AiProviderType.gemini);
+      expect(invite.geminiApiKey, 'AIza-family-key');
+      expect(invite.geminiModel, GeminiModels.hydrogen);
+
+      // Simulate legacy v1.0 QR JSON (only gemini_api_key, no ai_provider)
+      final legacyQr = jsonEncode({
+        'v': 1,
+        'app': 'si_hemat',
+        'family_id': invite.familyId,
+        'family_name': invite.familyName,
+        'family_secret': FamilyCrypto.generateFamilySecret(),
+        'payday_day': 28,
+        'gemini_api_key': 'AIza-legacy-key',
+      });
+
+      final spouseDb = AppDatabase(NativeDatabase.memory());
+      final spouseKeys = _MemKeyStore();
+      final spouseOnboarding =
+          OnboardingService(db: spouseDb, keyStore: spouseKeys);
+      final spouseTx = TransactionService(
+        db: spouseDb,
+        keyStore: spouseKeys,
+        onboarding: spouseOnboarding,
+      );
+      final spouseAi = AiFinanceService(
+        db: spouseDb,
+        keyStore: spouseKeys,
+        geminiClient: GeminiInteractionsClient(),
+        nineRouterClient: NineRouterClient(),
+        transactionService: spouseTx,
+      );
+
+      await spouseOnboarding.joinFamilyFromQr(
+        qrPayloadRaw: legacyQr,
+        memberName: 'Pasangan',
+      );
+
+      final spouseCfg = await spouseAi.loadConfig();
+      expect(spouseCfg.isNineRouter, isFalse);
+      expect(spouseCfg.isConfigured, isTrue);
+      expect(spouseCfg.apiKey, 'AIza-legacy-key');
+
+      await adminDb.close();
+      await spouseDb.close();
     });
   });
 }

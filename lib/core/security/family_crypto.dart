@@ -10,7 +10,12 @@ class FamilyPairingPayload {
     required this.familyName,
     required this.familySecret,
     required this.paydayDay,
+    this.aiProvider,
     this.geminiApiKey,
+    this.geminiModel,
+    this.nineRouterBaseUrl,
+    this.nineRouterApiKey,
+    this.nineRouterModel,
   });
 
   final int version;
@@ -18,7 +23,19 @@ class FamilyPairingPayload {
   final String familyName;
   final String familySecret;
   final int paydayDay;
+  final String? aiProvider; // 'gemini' | 'nine_router'
   final String? geminiApiKey;
+  final String? geminiModel;
+  final String? nineRouterBaseUrl;
+  final String? nineRouterApiKey;
+  final String? nineRouterModel;
+
+  bool get hasAiConfig =>
+      (geminiApiKey != null && geminiApiKey!.isNotEmpty) ||
+      (nineRouterBaseUrl != null &&
+          nineRouterBaseUrl!.isNotEmpty &&
+          nineRouterModel != null &&
+          nineRouterModel!.isNotEmpty);
 
   Map<String, dynamic> toJson() => {
         'v': version,
@@ -27,11 +44,29 @@ class FamilyPairingPayload {
         'family_name': familyName,
         'family_secret': familySecret,
         'payday_day': paydayDay,
+        if (aiProvider != null && aiProvider!.isNotEmpty)
+          'ai_provider': aiProvider,
         if (geminiApiKey != null && geminiApiKey!.isNotEmpty)
           'gemini_api_key': geminiApiKey,
+        if (geminiModel != null && geminiModel!.isNotEmpty)
+          'gemini_model': geminiModel,
+        if (nineRouterBaseUrl != null && nineRouterBaseUrl!.isNotEmpty)
+          'nine_router_base_url': nineRouterBaseUrl,
+        if (nineRouterApiKey != null && nineRouterApiKey!.isNotEmpty)
+          'nine_router_api_key': nineRouterApiKey,
+        if (nineRouterModel != null && nineRouterModel!.isNotEmpty)
+          'nine_router_model': nineRouterModel,
       };
 
   String toQrString() => jsonEncode(toJson());
+
+  static String? _nonEmptyString(dynamic value) {
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return null;
+  }
 
   factory FamilyPairingPayload.fromQrString(String raw) {
     final dynamic decoded;
@@ -66,7 +101,6 @@ class FamilyPairingPayload {
 
     final payday = (paydayRaw is int ? paydayRaw : 25).clamp(1, 31);
     final version = versionRaw is int ? versionRaw : 1;
-    final apiKey = decoded['gemini_api_key'];
 
     return FamilyPairingPayload(
       version: version,
@@ -74,7 +108,12 @@ class FamilyPairingPayload {
       familyName: familyName,
       familySecret: familySecret,
       paydayDay: payday,
-      geminiApiKey: apiKey is String && apiKey.isNotEmpty ? apiKey : null,
+      aiProvider: _nonEmptyString(decoded['ai_provider']),
+      geminiApiKey: _nonEmptyString(decoded['gemini_api_key']),
+      geminiModel: _nonEmptyString(decoded['gemini_model']),
+      nineRouterBaseUrl: _nonEmptyString(decoded['nine_router_base_url']),
+      nineRouterApiKey: _nonEmptyString(decoded['nine_router_api_key']),
+      nineRouterModel: _nonEmptyString(decoded['nine_router_model']),
     );
   }
 }

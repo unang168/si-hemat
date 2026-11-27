@@ -579,11 +579,13 @@ final reportTransactionsProvider =
 });
 
 final familyInvitePayloadProvider =
-    FutureProvider.family<FamilyPairingPayload?, bool>((ref, includeKey) async {
+    FutureProvider.family<FamilyPairingPayload?, bool>(
+        (ref, includeAiConfig) async {
   ref.watch(activeFamilyProvider);
+  ref.watch(aiConfigProvider);
   return ref
       .read(onboardingServiceProvider)
-      .buildInvitePayload(includeGeminiApiKey: includeKey);
+      .buildInvitePayload(includeAiConfig: includeAiConfig);
 });
 
 final familyHashProvider = FutureProvider<String?>((ref) async {
