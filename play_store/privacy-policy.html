@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kebijakan Privasi — Si-Hemat</title>
+  <style>
+    :root {
+      --bg: #f6f8f7;
+      --card: #ffffff;
+      --text: #14221d;
+      --muted: #4b5e56;
+      --accent: #0e7c66;
+      --border: #dde6e2;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e1412;
+        --card: #161f1c;
+        --text: #e8f1ed;
+        --muted: #9eb3aa;
+        --accent: #34d399;
+        --border: #25332e;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px 64px;
+    }
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px 28px;
+    }
+    h1 { margin-top: 0; color: var(--accent); font-size: 1.9rem; }
+    h2 { margin-top: 28px; font-size: 1.2rem; color: var(--accent); }
+    p, li { color: var(--text); }
+    .meta { color: var(--muted); font-size: 0.92rem; margin-bottom: 24px; }
+    .badge {
+      display: inline-block;
+      background: rgba(14, 124, 102, 0.14);
+      color: var(--accent);
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+    .note {
+      background: rgba(14, 124, 102, 0.08);
+      border-left: 4px solid var(--accent);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+    hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="badge">Offline-First &bull; Tanpa Server Cloud Pengembang</div>
+    <h1>Kebijakan Privasi Si-Hemat</h1>
+    <p class="meta">Terakhir diperbarui: 27 November 2026 &bull; Package ID: <code>id.sihemat.si_hemat</code></p>
+
+    <div class="note">
+      <strong>Ringkasan Singkat:</strong> Si-Hemat dirancang <strong>100% offline-first</strong>. Kami (pengembang) <strong>tidak</strong> mengumpulkan, menyimpan, menjual, atau mengakses data keuangan pribadi maupun keluarga Anda di server mana pun.
+    </div>
+
+    <h2>1. Penyimpanan Data Lokal</h2>
+    <p>Seluruh catatan transaksi, dompet, kategori, anggaran, tagihan rutin, dan ringkasan laporan disimpan secara lokal di database SQLite pada perangkat Android Anda sendiri. Informasi sensitif seperti hash PIN aplikasi, kunci sinkronisasi keluarga, dan kunci API opsional disimpan secara terenkripsi menggunakan Android Keystore (<code>flutter_secure_storage</code>).</p>
+
+    <h2>2. Sinkronisasi Keluarga (Wi-Fi Lokal)</h2>
+    <p>Fitur sinkronisasi keluarga bekerja secara <em>peer-to-peer</em> hanya pada jaringan Wi-Fi lokal yang sama antar perangkat anggota keluarga yang telah dipasangkan melalui QR Code. Seluruh paket sinkronisasi dienkripsi <em>end-to-end</em> dengan AES-256-GCM dan verifikasi HMAC-SHA256. Data bertanda <strong>Pribadi</strong> tidak pernah dikirim keluar dari perangkat pemiliknya.</p>
+
+    <h2>3. Fitur Asisten AI Opsional (Google Gemini API)</h2>
+    <p>Fitur Catat via Chat AI, Scan Struk, dan Tanya Laporan bersifat <strong>sepenuhnya opsional</strong> dan hanya aktif apabila Anda memasukkan API Key Google AI Studio milik Anda sendiri. Saat Anda menggunakan fitur AI tersebut, teks input, gambar struk, atau ringkasan statistik yang Anda minta akan dikirim langsung dari perangkat Anda ke Google Gemini API dengan parameter <code>store: false</code> dan tunduk pada <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Ketentuan Layanan Google Gemini API</a>. Pengembang Si-Hemat tidak memiliki server perantara dan tidak dapat melihat permintaan AI Anda.</p>
+
+    <h2>4. Izin Perangkat yang Digunakan</h2>
+    <ul>
+      <li><strong>Kamera (<code>CAMERA</code>):</strong> Digunakan hanya atas tindakan Anda untuk memindai QR Code undangan keluarga atau memotret struk belanja.</li>
+      <li><strong>Jaringan &amp; Wi-Fi (<code>INTERNET</code>, <code>ACCESS_WIFI_STATE</code>, <code>CHANGE_WIFI_MULTICAST_STATE</code>):</strong> Digunakan untuk menemukan perangkat keluarga di jaringan Wi-Fi lokal (mDNS) dan komunikasi opsional ke Google Gemini API.</li>
+      <li><strong>Biometrik (<code>USE_BIOMETRIC</code>):</strong> Digunakan hanya jika Anda mengaktifkan fitur buka kunci sidik jari / wajah pada perangkat Anda. Data biometrik diproses sepenuhnya oleh sistem operasi Android.</li>
+    </ul>
+
+    <h2>5. Backup &amp; Penghapusan Data</h2>
+    <p>Anda dapat mengekspor file backup terenkripsi (<code>.sihemat</code>, AES-256-GCM + PBKDF2) ke penyimpanan pilihan Anda kapan saja. Karena data hanya tersimpan di perangkat Anda, menghapus data aplikasi atau mencopot pemasangan (<em>uninstall</em>) Si-Hemat akan menghapus seluruh data lokal secara permanen.</p>
+
+    <h2>6. Privasi Anak</h2>
+    <p>Si-Hemat ditujukan untuk pengelolaan keuangan pribadi dan keluarga oleh pengguna dewasa dan tidak secara sengaja mengumpulkan informasi pribadi dari anak di bawah usia 13 tahun.</p>
+
+    <h2>7. Kontak Pengembang</h2>
+    <p>Jika Anda memiliki pertanyaan terkait Kebijakan Privasi ini, silakan hubungi pengembang di: <strong><!-- GANTI DENGAN EMAIL ANDA SEBELUM UPLOAD -->[email-pengembang@domain.com]</strong></p>
+
+    <hr />
+
+    <h2>English Summary</h2>
+    <p><strong>Si-Hemat</strong> is a 100% offline-first personal and family finance app. The developer operates no backend servers and does not collect, track, sell, or access your financial data. All records remain locally on your device. Optional Family Sync transfers only shared records over your local Wi-Fi network with AES-256-GCM encryption. Optional AI features use your own Google AI Studio API Key directly with Google Gemini API (<code>store: false</code>). Camera, Wi-Fi, and Biometric permissions are used strictly on-device when initiated by you.</p>
+  </main>
+</body>
+</html>
