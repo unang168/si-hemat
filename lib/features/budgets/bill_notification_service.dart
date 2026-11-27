@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:si_hemat/core/database/app_database.dart';
 import 'package:si_hemat/core/security/secure_storage_service.dart';
@@ -41,10 +42,12 @@ class BillNotificationSettings {
   const BillNotificationSettings({
     required this.enabled,
     required this.hour,
+    this.exactAlarmAllowed = true,
   });
 
   final bool enabled;
   final int hour;
+  final bool exactAlarmAllowed;
 }
 
 /// Pure, deterministic scheduler logic for H-2 and Hari-H recurring bill reminders.
@@ -185,6 +188,8 @@ class BillNotificationService {
   final FlutterLocalNotificationsPlugin _plugin;
 
   bool _initialized = false;
+  String _iconName = 'ic_stat_sihemat';
+  String? _lastInitError;
   static bool _tzInitialized = false;
 
   static const String _channelId = 'si_hemat_bill_reminders';
@@ -192,18 +197,43 @@ class BillNotificationService {
   static const String _channelDesc =
       'Notifikasi pengingat tagihan H-2 (2 hari sebelum) dan Hari-H jatuh tempo.';
 
-  Future<void> initialize() async {
-    if (_initialized) return;
+  Future<bool> initialize() async {
+    if (_initialized) return true;
     _ensureTimezoneConfigured();
+    _lastInitError = null;
 
-    try {
-      const androidSettings = AndroidInitializationSettings('ic_stat_sihemat');
-      const initSettings = InitializationSettings(android: androidSettings);
-      await _plugin.initialize(settings: initSettings);
-      _initialized = true;
-    } catch (_) {
-      // Safe no-op in unit/widget tests or unsupported desktop platforms.
+    // Try dedicated monochrome status bar icon first; gracefully fall back to @mipmap/ic_launcher.
+    for (final candidateIcon in const ['ic_stat_sihemat', '@mipmap/ic_launcher']) {
+      try {
+        final androidSettings = AndroidInitializationSettings(candidateIcon);
+        final initSettings = InitializationSettings(android: androidSettings);
+        await _plugin.initialize(settings: initSettings);
+
+        final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        await androidImpl?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            _channelId,
+            _channelName,
+            description: _channelDesc,
+            importance: Importance.high,
+            playSound: true,
+            enableVibration: true,
+          ),
+        );
+
+        _iconName = candidateIcon;
+        _initialized = true;
+        return true;
+      } on MissingPluginException catch (e) {
+        // Expected in headless unit/widget tests.
+        _lastInitError = e.message;
+        return false;
+      } catch (e) {
+        _lastInitError = e.toString();
+      }
     }
+    return false;
   }
 
   void _ensureTimezoneConfigured() {
@@ -243,20 +273,44 @@ class BillNotificationService {
         await keyStore.read(SecureStorageKeys.billNotificationHour);
     final enabled = enabledRaw != 'false'; // Enabled by default
     final hour = int.tryParse(hourRaw ?? '') ?? 8;
+    final exactAllowed = await canScheduleExactAlarms();
     return BillNotificationSettings(
       enabled: enabled,
       hour: hour.clamp(0, 23),
+      exactAlarmAllowed: exactAllowed,
     );
   }
 
+  Future<bool> canScheduleExactAlarms() async {
+    try {
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      return await androidImpl?.canScheduleExactNotifications() ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
   Future<bool> requestPermissions() async {
-    await initialize();
+    final ok = await initialize();
+    if (!ok) return false;
     try {
       final androidImpl = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       final notifGranted =
           await androidImpl?.requestNotificationsPermission() ?? true;
       return notifGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> requestExactAlarmPermission() async {
+    await initialize();
+    try {
+      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      return await androidImpl?.requestExactAlarmsPermission() ?? false;
     } catch (_) {
       return false;
     }
@@ -294,19 +348,34 @@ class BillNotificationService {
   }
 
   Future<void> cancelAllScheduled() async {
-    await initialize();
-    if (!_initialized) return;
+    final ok = await initialize();
+    if (!ok) return;
     try {
       await _plugin.cancelAllPendingNotifications();
     } catch (_) {}
+  }
+
+  NotificationDetails _buildNotificationDetails() {
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: _iconName,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
   }
 
   /// Recomputes and reschedules all upcoming H-2 and Hari-H reminders for [familyId].
   /// Returns the number of scheduled reminders.
   Future<int> rescheduleAllForFamily(String familyId) async {
     final settings = await loadSettings();
-    await initialize();
-    if (!_initialized) return 0;
+    final ok = await initialize();
+    if (!ok) return 0;
 
     try {
       await _plugin.cancelAllPendingNotifications();
@@ -324,26 +393,10 @@ class BillNotificationService {
       reminderHour: settings.hour,
     );
 
-    AndroidScheduleMode scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
-    try {
-      final androidImpl = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      final canExact = await androidImpl?.canScheduleExactNotifications() ?? false;
-      if (canExact) {
-        scheduleMode = AndroidScheduleMode.exactAllowWhileIdle;
-      }
-    } catch (_) {}
-
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: _channelDesc,
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: 'ic_stat_sihemat',
-      ),
-    );
+    var scheduleMode = settings.exactAlarmAllowed
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+    final details = _buildNotificationDetails();
 
     var scheduledCount = 0;
     for (final r in reminders) {
@@ -360,7 +413,6 @@ class BillNotificationService {
         );
         scheduledCount++;
       } catch (_) {
-        // Fallback to inexact mode if Android restricts exact alarms at runtime.
         if (scheduleMode != AndroidScheduleMode.inexactAllowWhileIdle) {
           scheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
           try {
@@ -382,26 +434,26 @@ class BillNotificationService {
     return scheduledCount;
   }
 
-  /// Sends an immediate test notification so the user can verify HP notifications work.
+  /// Sends an immediate test notification AND throws a descriptive error if
+  /// initialization or permission failed so the UI never fails silently.
   Future<void> sendTestNotification() async {
-    await requestPermissions();
-    if (!_initialized) return;
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: _channelDesc,
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: 'ic_stat_sihemat',
-      ),
-    );
+    final granted = await requestPermissions();
+    if (!_initialized) {
+      throw StateError(
+        'Layanan notifikasi gagal diinisialisasi${_lastInitError != null ? ': $_lastInitError' : '.'}',
+      );
+    }
+    if (!granted) {
+      throw StateError(
+        'Izin notifikasi HP belum diaktifkan. Aktifkan izin Notifikasi untuk Si-Hemat di Setelan Aplikasi HP Anda.',
+      );
+    }
     await _plugin.show(
       id: 999901,
       title: 'Pengingat Tagihan Si-Hemat Aktif',
       body:
           'Notifikasi H-2 (2 hari sebelum) & Hari-H jatuh tempo siap mengingatkan Anda meski aplikasi tertutup.',
-      notificationDetails: details,
+      notificationDetails: _buildNotificationDetails(),
       payload: 'test',
     );
   }

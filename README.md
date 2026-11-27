@@ -8,10 +8,10 @@
 
 ## Unduh APK (Gratis via GitHub Releases)
 
-👉 Unduh versi terbaru di **[Halaman Releases Si-Hemat](https://github.com/unang168/si-hemat/releases/latest)** lalu pilih file **`Si-Hemat-v1.1.0-arm64-v8a.apk`** (untuk sebagian besar HP Android modern 64-bit).
+👉 Unduh versi terbaru di **[Halaman Releases Si-Hemat](https://github.com/unang168/si-hemat/releases/latest)** lalu pilih file **`Si-Hemat-v1.1.1-arm64-v8a.apk`** (untuk sebagian besar HP Android modern 64-bit).
 
 ### Cara Install di HP Android
-1. Unduh file `Si-Hemat-v1.1.0-arm64-v8a.apk` dari menu **Releases** di HP Android Anda.
+1. Unduh file `Si-Hemat-v1.1.1-arm64-v8a.apk` dari menu **Releases** di HP Android Anda.
 2. Ketuk file APK hasil unduhan.
 3. Jika Android menampilkan peringatan keamanan, pilih **Setelan / Settings** → aktifkan **Izinkan dari sumber ini (*Install unknown apps*)** untuk browser/File Manager Anda.
 4. Ketuk **Install** dan buka **Si-Hemat**.

@@ -381,6 +381,40 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
                         },
                       ),
                     ),
+                    if (!notif.exactAlarmAllowed) ...[
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: Icon(
+                          Icons.alarm_add_rounded,
+                          color: AppTheme.warningOf(context),
+                        ),
+                        title: const Text('Izinkan Alarm Tepat Waktu'),
+                        subtitle: const Text(
+                          'Disarankan di Android 14+ agar notifikasi H-2 & Hari-H muncul tepat pada jam yang dipilih',
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () async {
+                          ref
+                              .read(suppressAutoLockProvider.notifier)
+                              .setSuppressed(true);
+                          try {
+                            await ref
+                                .read(billNotificationServiceProvider)
+                                .requestExactAlarmPermission();
+                          } finally {
+                            ref
+                                .read(suppressAutoLockProvider.notifier)
+                                .setSuppressed(false);
+                          }
+                          if (family != null) {
+                            await ref
+                                .read(billNotificationServiceProvider)
+                                .rescheduleAllForFamily(family.id);
+                          }
+                          ref.invalidate(billNotificationSettingsProvider);
+                        },
+                      ),
+                    ],
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.send_outlined),
@@ -390,18 +424,30 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
                       ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () async {
-                        await ref
-                            .read(billNotificationServiceProvider)
-                            .sendTestNotification();
-                        if (family != null) {
-                          final count = await ref
+                        try {
+                          await ref
                               .read(billNotificationServiceProvider)
-                              .rescheduleAllForFamily(family.id);
+                              .sendTestNotification();
+                          var count = 0;
+                          if (family != null) {
+                            count = await ref
+                                .read(billNotificationServiceProvider)
+                                .rescheduleAllForFamily(family.id);
+                          }
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
                                 'Notifikasi tes dikirim! ($count jadwal H-2/Hari-H aktif.)',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.toString().replaceFirst('Bad state: ', ''),
                               ),
                             ),
                           );
@@ -629,7 +675,7 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Si-Hemat v1.1.0 • Offline-First Family Finance + Gemini / 9Router AI',
+              'Si-Hemat v1.1.1 • Offline-First Family Finance + Gemini / 9Router AI',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: colors.onSurfaceVariant,
               ),
