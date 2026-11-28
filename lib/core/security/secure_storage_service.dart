@@ -25,6 +25,7 @@ class SecureStorageKeys {
   static const String biometricEnabled = 'sihemat_biometric_enabled';
   static const String themeMode = 'sihemat_theme_mode';
   static const String autoLockSeconds = 'sihemat_auto_lock_seconds';
+  static const String walletBankHints = 'sihemat_wallet_bank_hints';
 }
 
 class FlutterSecureKeyStore implements SecureKeyStore {

@@ -130,6 +130,28 @@ class AiFinanceService {
     return nineRouterClient.listModels(baseUrl: baseUrl, apiKey: apiKey);
   }
 
+  /// Executes a structured multimodal prompt through whichever BYOK provider is active
+  /// (Gemini Interactions API or 9Router OpenAI-compatible API).
+  Future<String> runMultimodalPrompt({
+    required String userText,
+    String? systemInstruction,
+    Uint8List? imageBytes,
+    String imageMimeType = 'image/jpeg',
+    Map<String, dynamic>? jsonSchema,
+    int? maxOutputTokens,
+  }) async {
+    final config = await loadConfig();
+    return _runPrompt(
+      config: config,
+      userText: userText,
+      systemInstruction: systemInstruction,
+      imageBytes: imageBytes,
+      imageMimeType: imageMimeType,
+      jsonSchema: jsonSchema,
+      maxOutputTokens: maxOutputTokens,
+    );
+  }
+
   Future<String> _runPrompt({
     required AiConfig config,
     required String userText,

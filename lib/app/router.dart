@@ -5,8 +5,10 @@ import 'package:si_hemat/app/providers.dart';
 import 'package:si_hemat/core/constants/sync_constants.dart';
 import 'package:si_hemat/core/database/app_database.dart';
 import 'package:si_hemat/features/ai_assistant/ai_chat_input_screen.dart';
+import 'package:si_hemat/features/ai_assistant/ai_models.dart';
 import 'package:si_hemat/features/ai_assistant/ai_receipt_scan_screen.dart';
 import 'package:si_hemat/features/ai_assistant/ai_report_chat_screen.dart';
+import 'package:si_hemat/features/ai_assistant/ai_statement_import_screen.dart';
 import 'package:si_hemat/features/categories/categories_screen.dart';
 import 'package:si_hemat/features/family_sync/family_qr_screen.dart';
 import 'package:si_hemat/features/family_sync/qr_scanner_screen.dart';
@@ -77,6 +79,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/ai-receipt-scan',
         builder: (context, state) => const AiReceiptScanScreen(),
+      ),
+      GoRoute(
+        path: '/ai-statement-import',
+        builder: (context, state) {
+          final drafts = state.extra is List<AiTransactionDraft>
+              ? state.extra as List<AiTransactionDraft>
+              : null;
+          return AiStatementImportScreen(initialDrafts: drafts);
+        },
       ),
       GoRoute(
         path: '/ai-report-chat',

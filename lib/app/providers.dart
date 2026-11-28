@@ -8,6 +8,7 @@ import 'package:si_hemat/features/ai_assistant/ai_finance_service.dart';
 import 'package:si_hemat/features/ai_assistant/ai_models.dart';
 import 'package:si_hemat/features/ai_assistant/gemini_client.dart';
 import 'package:si_hemat/features/ai_assistant/nine_router_client.dart';
+import 'package:si_hemat/features/ai_assistant/statement_import_service.dart';
 import 'package:si_hemat/features/budgets/bill_notification_service.dart';
 import 'package:si_hemat/features/budgets/budget_bill_service.dart';
 import 'package:si_hemat/features/categories/category_service.dart';
@@ -41,6 +42,11 @@ final walletServiceProvider = Provider<WalletService>((ref) {
     keyStore: ref.watch(secureKeyStoreProvider),
     onboarding: ref.watch(onboardingServiceProvider),
   );
+});
+
+final walletBankHintsProvider =
+    FutureProvider<Map<String, WalletBankHint>>((ref) {
+  return ref.watch(walletServiceProvider).loadBankHints();
 });
 
 final transactionServiceProvider = Provider<TransactionService>((ref) {
@@ -101,6 +107,15 @@ final aiFinanceServiceProvider = Provider<AiFinanceService>((ref) {
     geminiClient: ref.watch(geminiClientProvider),
     nineRouterClient: ref.watch(nineRouterClientProvider),
     transactionService: ref.watch(transactionServiceProvider),
+  );
+});
+
+final statementImportServiceProvider = Provider<StatementImportService>((ref) {
+  return StatementImportService(
+    db: ref.watch(databaseProvider),
+    aiService: ref.watch(aiFinanceServiceProvider),
+    transactionService: ref.watch(transactionServiceProvider),
+    walletService: ref.watch(walletServiceProvider),
   );
 });
 

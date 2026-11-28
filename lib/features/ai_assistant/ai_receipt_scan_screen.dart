@@ -29,6 +29,7 @@ class _AiReceiptScanScreenState extends ConsumerState<AiReceiptScanScreen> {
   String? _reply;
   String? _error;
   AiTransactionDraft? _draft;
+  List<AiTransactionDraft> _allDrafts = const [];
 
   final _amountCtrl = TextEditingController();
   final _merchantCtrl = TextEditingController();
@@ -60,6 +61,7 @@ class _AiReceiptScanScreenState extends ConsumerState<AiReceiptScanScreen> {
       _error = null;
       _reply = null;
       _draft = null;
+      _allDrafts = const [];
     });
 
     try {
@@ -82,6 +84,7 @@ class _AiReceiptScanScreenState extends ConsumerState<AiReceiptScanScreen> {
       if (!mounted) return;
       setState(() {
         _reply = result.assistantMessage;
+        _allDrafts = result.drafts;
         if (result.drafts.isNotEmpty) {
           _draft = result.drafts.first;
           _amountCtrl.text = CurrencyFormatter.formatNumber(_draft!.amount);
@@ -233,7 +236,7 @@ class _AiReceiptScanScreenState extends ConsumerState<AiReceiptScanScreen> {
                     const LinearProgressIndicator(),
                     const SizedBox(height: 6),
                     Text(
-                      'Gemini Vision sedang membaca struk...',
+                      '${configAsync.value?.activeProviderLabel ?? 'AI'} Vision sedang membaca struk...',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall,
                     ),
@@ -262,6 +265,39 @@ class _AiReceiptScanScreenState extends ConsumerState<AiReceiptScanScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(14),
                 child: Text(_reply!),
+              ),
+            ),
+          ],
+          if (_allDrafts.length > 1) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: colors.tertiaryContainer.withValues(alpha: 0.55),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Terdeteksi ${_allDrafts.length} transaksi sekaligus (seperti mutasi rekening).',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: () {
+                        context.pushReplacement(
+                          '/ai-statement-import',
+                          extra: _allDrafts,
+                        );
+                      },
+                      icon: const Icon(Icons.playlist_add_check_rounded),
+                      label: Text(
+                        'Buka ${_allDrafts.length} Transaksi di Review Massal',
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

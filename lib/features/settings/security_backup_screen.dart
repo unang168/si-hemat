@@ -744,7 +744,7 @@ class _SecurityBackupScreenState extends ConsumerState<SecurityBackupScreen> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Si-Hemat v1.1.3 • Offline-First Family Finance + Gemini / 9Router AI',
+              'Si-Hemat v1.2.0 • Offline-First Family Finance + Gemini / 9Router AI',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: colors.onSurfaceVariant,
               ),

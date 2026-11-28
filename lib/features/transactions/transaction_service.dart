@@ -53,6 +53,7 @@ class TransactionService {
     required DateTime date,
     String? merchant,
     String? note,
+    String? receiptHash,
     String source = TransactionSource.manual,
   }) async {
     if (amount <= 0) {
@@ -88,6 +89,7 @@ class TransactionService {
       date: date,
       merchant: merchant,
       note: note,
+      receiptHash: receiptHash,
       source: source,
       visibility: visibility,
       deviceId: deviceId,

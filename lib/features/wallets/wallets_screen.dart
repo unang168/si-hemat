@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:si_hemat/app/providers.dart';
@@ -7,6 +8,7 @@ import 'package:si_hemat/core/database/app_database.dart';
 import 'package:si_hemat/core/utils/category_icons.dart';
 import 'package:si_hemat/core/utils/currency_formatter.dart';
 import 'package:si_hemat/core/utils/idr_input_formatter.dart';
+import 'package:si_hemat/features/wallets/wallet_service.dart';
 
 class WalletsScreen extends ConsumerWidget {
   const WalletsScreen({super.key});
@@ -17,6 +19,7 @@ class WalletsScreen extends ConsumerWidget {
     final colors = theme.colorScheme;
     final family = ref.watch(activeFamilyProvider).value;
     final walletsAsync = ref.watch(allWalletsWithBalanceProvider);
+    final hints = ref.watch(walletBankHintsProvider).value ?? const {};
     final hideBalance = ref.watch(hideBalanceProvider);
 
     return Scaffold(
@@ -68,12 +71,14 @@ class WalletsScreen extends ConsumerWidget {
                 ...sharedWallets.map(
                   (item) => _WalletCard(
                     item: item,
+                    bankHint: hints[item.wallet.id],
                     hideBalance: hideBalance,
                     onTap: () => _openWalletForm(
                       context,
                       ref,
                       familyId: family!.id,
                       existing: item.wallet,
+                      existingHint: hints[item.wallet.id],
                     ),
                   ),
                 ),
@@ -92,12 +97,14 @@ class WalletsScreen extends ConsumerWidget {
                 ...personalWallets.map(
                   (item) => _WalletCard(
                     item: item,
+                    bankHint: hints[item.wallet.id],
                     hideBalance: hideBalance,
                     onTap: () => _openWalletForm(
                       context,
                       ref,
                       familyId: family!.id,
                       existing: item.wallet,
+                      existingHint: hints[item.wallet.id],
                     ),
                   ),
                 ),
@@ -113,6 +120,7 @@ class WalletsScreen extends ConsumerWidget {
     WidgetRef ref, {
     required String familyId,
     Wallet? existing,
+    WalletBankHint? existingHint,
   }) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -121,6 +129,7 @@ class WalletsScreen extends ConsumerWidget {
       builder: (_) => _WalletFormSheet(
         familyId: familyId,
         existing: existing,
+        existingHint: existingHint,
       ),
     );
   }
@@ -194,17 +203,21 @@ class _EmptyWalletCard extends StatelessWidget {
 class _WalletCard extends StatelessWidget {
   const _WalletCard({
     required this.item,
+    this.bankHint,
     required this.hideBalance,
     required this.onTap,
   });
 
   final WalletWithBalance item;
+  final WalletBankHint? bankHint;
   final bool hideBalance;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hintText =
+        bankHint != null && !bankHint!.isEmpty ? ' • ${bankHint!.displayLabel}' : '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Card(
@@ -220,7 +233,7 @@ class _WalletCard extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           subtitle: Text(
-            '${WalletType.label(item.wallet.type)} • Saldo awal ${CurrencyFormatter.formatIdr(item.wallet.initialBalance, hide: hideBalance)}',
+            '${WalletType.label(item.wallet.type)}$hintText • Saldo awal ${CurrencyFormatter.formatIdr(item.wallet.initialBalance, hide: hideBalance)}',
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -248,10 +261,12 @@ class _WalletFormSheet extends ConsumerStatefulWidget {
   const _WalletFormSheet({
     required this.familyId,
     this.existing,
+    this.existingHint,
   });
 
   final String familyId;
   final Wallet? existing;
+  final WalletBankHint? existingHint;
 
   @override
   ConsumerState<_WalletFormSheet> createState() => _WalletFormSheetState();
@@ -261,6 +276,8 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _initialBalanceCtrl;
+  late final TextEditingController _bankNameCtrl;
+  late final TextEditingController _last4Ctrl;
   late String _type;
   late String _visibility;
   late int _color;
@@ -276,6 +293,12 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
     _initialBalanceCtrl = TextEditingController(
       text: CurrencyFormatter.formatNumber(e?.initialBalance ?? 0),
     );
+    _bankNameCtrl = TextEditingController(
+      text: widget.existingHint?.bankName ?? '',
+    );
+    _last4Ctrl = TextEditingController(
+      text: widget.existingHint?.last4 ?? '',
+    );
     _type = e?.type ?? WalletType.bank;
     _visibility = e?.visibility ?? VisibilityScope.shared;
     _color = e?.color ?? AppIcons.walletColorPalette.first;
@@ -285,6 +308,8 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
   void dispose() {
     _nameCtrl.dispose();
     _initialBalanceCtrl.dispose();
+    _bankNameCtrl.dispose();
+    _last4Ctrl.dispose();
     super.dispose();
   }
 
@@ -294,9 +319,11 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
     try {
       final balance = CurrencyFormatter.parseIdr(_initialBalanceCtrl.text) ?? 0;
       final service = ref.read(walletServiceProvider);
+      final String walletId;
       if (_isEditing) {
+        walletId = widget.existing!.id;
         await service.updateWallet(
-          walletId: widget.existing!.id,
+          walletId: walletId,
           name: _nameCtrl.text,
           type: _type,
           visibility: _visibility,
@@ -304,7 +331,7 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
           color: _color,
         );
       } else {
-        await service.createWallet(
+        walletId = await service.createWallet(
           familyId: widget.familyId,
           name: _nameCtrl.text,
           type: _type,
@@ -313,6 +340,12 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
           color: _color,
         );
       }
+      await service.setBankHint(
+        walletId: walletId,
+        bankName: _type == WalletType.cash ? '' : _bankNameCtrl.text,
+        last4: _type == WalletType.cash ? '' : _last4Ctrl.text,
+      );
+      ref.invalidate(walletBankHintsProvider);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
@@ -468,6 +501,49 @@ class _WalletFormSheetState extends ConsumerState<_WalletFormSheet> {
                   prefixIcon: Icon(Icons.payments_outlined),
                 ),
               ),
+              if (_type != WalletType.cash) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _bankNameCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Bank / E-Wallet (opsional)',
+                          hintText: 'BCA, Mandiri, OVO',
+                          prefixIcon: Icon(Icons.account_balance_outlined),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _last4Ctrl,
+                        keyboardType: TextInputType.number,
+                        maxLength: 4,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: '4 Digit Akhir',
+                          hintText: '7890',
+                          counterText: '',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Opsional (terenkripsi lokal) agar Import Mutasi PDF otomatis mengenali dompet ini.',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               Text('Warna Dompet', style: theme.textTheme.labelLarge),
               const SizedBox(height: 8),

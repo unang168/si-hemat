@@ -13,8 +13,8 @@ class NineRouterClient {
             Dio(
               BaseOptions(
                 connectTimeout: const Duration(seconds: 20),
-                receiveTimeout: const Duration(seconds: 90),
-                sendTimeout: const Duration(seconds: 30),
+                receiveTimeout: const Duration(seconds: 120),
+                sendTimeout: const Duration(seconds: 45),
               ),
             );
 

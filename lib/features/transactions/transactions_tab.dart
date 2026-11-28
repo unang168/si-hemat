@@ -90,6 +90,11 @@ class _TransactionsTabState extends ConsumerState<TransactionsTab> {
               child: const Text('Reset Filter'),
             ),
           IconButton(
+            tooltip: 'Import Mutasi (PDF / Screenshot)',
+            icon: const Icon(Icons.upload_file_outlined),
+            onPressed: () => context.push('/ai-statement-import'),
+          ),
+          IconButton(
             tooltip: hideBalance ? 'Tampilkan Saldo' : 'Sembunyikan Saldo',
             icon: Icon(
               hideBalance

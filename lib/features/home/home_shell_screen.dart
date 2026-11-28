@@ -83,7 +83,7 @@ class _HomeShellScreenState extends ConsumerState<HomeShellScreen> {
                         Theme.of(sheetCtx).colorScheme.onPrimaryContainer,
                     child: const Icon(Icons.chat_bubble_outline_rounded),
                   ),
-                  title: const Text('Catat via Chat AI (Gemini)'),
+                  title: const Text('Catat via Chat AI'),
                   subtitle: const Text(
                     'Ketik santai, otomatis pecah jadi draft transaksi',
                   ),
@@ -102,11 +102,28 @@ class _HomeShellScreenState extends ConsumerState<HomeShellScreen> {
                   ),
                   title: const Text('Scan Struk / Screenshot QRIS'),
                   subtitle: const Text(
-                    'Foto struk atau pilih screenshot bukti bayar via Gemini Vision',
+                    'Foto 1 struk belanja atau bukti transfer cepat',
                   ),
                   onTap: () {
                     Navigator.pop(sheetCtx);
                     context.push('/ai-receipt-scan');
+                  },
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        Theme.of(sheetCtx).colorScheme.tertiaryContainer,
+                    foregroundColor:
+                        Theme.of(sheetCtx).colorScheme.onTertiaryContainer,
+                    child: const Icon(Icons.upload_file_outlined),
+                  ),
+                  title: const Text('Import Mutasi Rekening (PDF / Gambar)'),
+                  subtitle: const Text(
+                    'Rekap mutasi PDF 1 bulan atau multi-screenshot m-banking',
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    context.push('/ai-statement-import');
                   },
                 ),
               ],

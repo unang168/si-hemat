@@ -8,10 +8,10 @@
 
 ## Unduh APK (Gratis via GitHub Releases)
 
-👉 Unduh versi terbaru di **[Halaman Releases Si-Hemat](https://github.com/unang168/si-hemat/releases/latest)** lalu pilih file **`Si-Hemat-v1.1.3-arm64-v8a.apk`** (untuk sebagian besar HP Android modern 64-bit).
+👉 Unduh versi terbaru di **[Halaman Releases Si-Hemat](https://github.com/unang168/si-hemat/releases/latest)** lalu pilih file **`Si-Hemat-v1.2.0-arm64-v8a.apk`** (untuk sebagian besar HP Android modern 64-bit).
 
 ### Cara Install di HP Android
-1. Unduh file `Si-Hemat-v1.1.3-arm64-v8a.apk` dari menu **Releases** di HP Android Anda.
+1. Unduh file `Si-Hemat-v1.2.0-arm64-v8a.apk` dari menu **Releases** di HP Android Anda.
 2. Ketuk file APK hasil unduhan.
 3. Jika Android menampilkan peringatan keamanan, pilih **Setelan / Settings** → aktifkan **Izinkan dari sumber ini (*Install unknown apps*)** untuk browser/File Manager Anda.
 4. Ketuk **Install** dan buka **Si-Hemat**.
@@ -34,6 +34,7 @@
   - Mendukung **Google AI Studio (Gemini Free Tier)** maupun **9Router (OpenAI-compatible)** lengkap dengan muat daftar model/Combo otomatis (`/v1/models`).
   - Catat multi-transaksi lewat chat bahasa santai.
   - Scan foto struk / screenshot QRIS via multimodal vision.
+  - **Import Mutasi Rekening (PDF 1 Bulan & Multi-Screenshot):** Mendukung e-Statement PDF berpassword maupun tanpa password (password dibuka 100% lokal di HP), multi-screenshot m-banking harian/mingguan, deteksi rekening per dompet (`[Keluarga]` / `[Pribadi]`), anti-duplikat 2 lapis, serta review checklist massal sebelum simpan.
   - Tanya evaluasi & saran hemat laporan bulanan.
 - **Keamanan & Backup Terenkripsi:** Kunci PIN 6 digit + Biometrik (sidik jari) dengan *auto-lock* background, Mode Gelap/Terang/Sistem, serta Export/Restore penuh file terenkripsi **`.sihemat`** (PBKDF2 + AES-256-GCM).
 

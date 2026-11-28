@@ -48,6 +48,7 @@ class TransactionSource {
   static const String manual = 'manual';
   static const String aiChat = 'ai_chat';
   static const String aiReceipt = 'ai_receipt';
+  static const String aiStatement = 'ai_statement';
   static const String recurring = 'recurring';
 }
 

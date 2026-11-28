@@ -44,8 +44,8 @@ class GeminiInteractionsClient {
             Dio(
               BaseOptions(
                 connectTimeout: const Duration(seconds: 20),
-                receiveTimeout: const Duration(seconds: 60),
-                sendTimeout: const Duration(seconds: 30),
+                receiveTimeout: const Duration(seconds: 120),
+                sendTimeout: const Duration(seconds: 45),
               ),
             );
 
